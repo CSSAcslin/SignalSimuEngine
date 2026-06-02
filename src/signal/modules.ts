@@ -1,0 +1,251 @@
+import type { ModuleDefinition } from "./types";
+
+export const moduleDefinitions: ModuleDefinition[] = [
+  {
+    kind: "sine",
+    type: "source",
+    label: "Sine",
+    description: "Sinusoidal waveform with amplitude, frequency, and phase.",
+    inputCount: 0,
+    params: [
+      { key: "frequency", label: "Frequency", type: "number", defaultValue: 5, min: 0, step: 0.1, unit: "Hz" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 1, step: 0.1 },
+      { key: "phase", label: "Phase", type: "number", defaultValue: 0, step: 0.1, unit: "rad" }
+    ]
+  },
+  {
+    kind: "triangle",
+    type: "source",
+    label: "Triangle",
+    description: "Bipolar triangle waveform with amplitude, frequency, and phase.",
+    inputCount: 0,
+    params: [
+      { key: "frequency", label: "Frequency", type: "number", defaultValue: 5, min: 0, step: 0.1, unit: "Hz" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 1, step: 0.1 },
+      { key: "phase", label: "Phase", type: "number", defaultValue: 0, step: 0.1, unit: "rad" }
+    ]
+  },
+  {
+    kind: "square",
+    type: "source",
+    label: "Square",
+    description: "Bipolar square wave.",
+    inputCount: 0,
+    params: [
+      { key: "frequency", label: "Frequency", type: "number", defaultValue: 3, min: 0, step: 0.1, unit: "Hz" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 0.7, step: 0.1 }
+    ]
+  },
+  {
+    kind: "pulse",
+    type: "source",
+    label: "Pulse",
+    description: "Single rectangular pulse.",
+    inputCount: 0,
+    params: [
+      { key: "start", label: "Start", type: "number", defaultValue: 0.15, min: 0, step: 0.01, unit: "s" },
+      { key: "width", label: "Width", type: "number", defaultValue: 0.08, min: 0, step: 0.01, unit: "s" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 1, step: 0.1 }
+    ]
+  },
+  {
+    kind: "gaussianPulse",
+    type: "source",
+    label: "Gaussian Pulse",
+    description: "Single Gaussian pulse with center, width, and amplitude.",
+    inputCount: 0,
+    params: [
+      { key: "center", label: "Center", type: "number", defaultValue: 0.2, min: 0, step: 0.01, unit: "s" },
+      { key: "sigma", label: "Sigma", type: "number", defaultValue: 0.04, min: 0.000001, step: 0.01, unit: "s" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 1, step: 0.1 }
+    ]
+  },
+  {
+    kind: "chirp",
+    type: "source",
+    label: "Chirp",
+    description: "Linear frequency sweep.",
+    inputCount: 0,
+    params: [
+      { key: "startFrequency", label: "Start Freq", type: "number", defaultValue: 2, min: 0, step: 0.1, unit: "Hz" },
+      { key: "endFrequency", label: "End Freq", type: "number", defaultValue: 40, min: 0, step: 0.1, unit: "Hz" },
+      { key: "amplitude", label: "Amplitude", type: "number", defaultValue: 0.6, step: 0.1 }
+    ]
+  },
+  {
+    kind: "noise",
+    type: "source",
+    label: "White Noise",
+    description: "Seeded uniform white noise.",
+    inputCount: 0,
+    params: [{ key: "amplitude", label: "Amplitude", type: "number", defaultValue: 0.2, min: 0, step: 0.05 }]
+  },
+  {
+    kind: "constant",
+    type: "source",
+    label: "Constant",
+    description: "Constant baseline value.",
+    inputCount: 0,
+    params: [{ key: "value", label: "Value", type: "number", defaultValue: 1, step: 0.1 }]
+  },
+  {
+    kind: "import",
+    type: "source",
+    label: "Import Array",
+    description: "Inline numeric array for quick experiments.",
+    inputCount: 0,
+    params: [{ key: "values", label: "Values", type: "array", defaultValue: [1, 0, -1, 0] }]
+  },
+  {
+    kind: "add",
+    type: "operation",
+    label: "Add",
+    description: "Element-wise addition.",
+    inputCount: "many",
+    params: []
+  },
+  {
+    kind: "subtract",
+    type: "operation",
+    label: "Subtract",
+    description: "Subtract second input from first input.",
+    inputCount: 2,
+    params: []
+  },
+  {
+    kind: "multiply",
+    type: "operation",
+    label: "Multiply",
+    description: "Element-wise multiplication.",
+    inputCount: "many",
+    params: []
+  },
+  {
+    kind: "scale",
+    type: "operation",
+    label: "Scale",
+    description: "Multiply a signal by a scalar gain.",
+    inputCount: 1,
+    params: [{ key: "gain", label: "Gain", type: "number", defaultValue: 1.5, step: 0.1 }]
+  },
+  {
+    kind: "delay",
+    type: "operation",
+    label: "Delay",
+    description: "Shift a signal by samples.",
+    inputCount: 1,
+    params: [{ key: "samples", label: "Samples", type: "number", defaultValue: 16, step: 1, unit: "samples" }]
+  },
+  {
+    kind: "convolve",
+    type: "operation",
+    label: "Convolve",
+    description: "Full discrete convolution.",
+    inputCount: 2,
+    params: []
+  },
+  {
+    kind: "correlate",
+    type: "operation",
+    label: "Cross Correlate",
+    description: "Full cross-correlation.",
+    inputCount: 2,
+    params: []
+  },
+  {
+    kind: "fft",
+    type: "operation",
+    label: "FFT Spectrum",
+    description: "Magnitude spectrum for analysis.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "normalize",
+    type: "operation",
+    label: "Normalize",
+    description: "Scale by maximum absolute value.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "rms",
+    type: "analysis",
+    outputType: "scalar",
+    label: "RMS",
+    description: "Root mean square amplitude.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "mean",
+    type: "analysis",
+    outputType: "scalar",
+    label: "Mean",
+    description: "Arithmetic mean value.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "peak",
+    type: "analysis",
+    outputType: "scalar",
+    label: "Peak",
+    description: "Maximum absolute amplitude.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "snr",
+    type: "analysis",
+    outputType: "scalar",
+    label: "SNR",
+    description: "Signal-to-noise ratio against a configured noise floor.",
+    inputCount: 1,
+    params: [{ key: "noiseFloor", label: "Noise Floor", type: "number", defaultValue: 0.1, min: 0.000001, step: 0.01 }]
+  },
+  {
+    kind: "dominantFrequency",
+    type: "analysis",
+    outputType: "scalar",
+    label: "Dominant Frequency",
+    description: "Frequency bin with the highest non-DC magnitude.",
+    inputCount: 1,
+    params: []
+  },
+  {
+    kind: "bandwidth",
+    type: "analysis",
+    outputType: "scalar",
+    label: "Bandwidth",
+    description: "Occupied bandwidth above a relative magnitude threshold.",
+    inputCount: 1,
+    params: [{ key: "threshold", label: "Threshold", type: "number", defaultValue: 0.5, min: 0, max: 1, step: 0.05 }]
+  },
+  {
+    kind: "stft",
+    type: "analysis",
+    outputType: "time-frequency",
+    label: "STFT",
+    description: "Short-time Fourier transform analysis via the Python backend.",
+    inputCount: 1,
+    params: [
+      { key: "windowSize", label: "Window Size", type: "number", defaultValue: 128, min: 8, step: 1, unit: "samples" },
+      { key: "hopSize", label: "Hop Size", type: "number", defaultValue: 32, min: 1, step: 1, unit: "samples" }
+    ]
+  },
+  {
+    kind: "cwt",
+    type: "analysis",
+    outputType: "time-frequency",
+    label: "CWT",
+    description: "Continuous wavelet transform analysis via the Python backend.",
+    inputCount: 1,
+    params: [
+      { key: "wavelet", label: "Wavelet", type: "select", defaultValue: "morlet", options: [{ label: "Morlet", value: "morlet" }] },
+      { key: "voicesPerOctave", label: "Voices / Oct", type: "number", defaultValue: 12, min: 1, step: 1 }
+    ]
+  }
+];
+
+export const getModuleDefinition = (kind: string) => moduleDefinitions.find((definition) => definition.kind === kind);

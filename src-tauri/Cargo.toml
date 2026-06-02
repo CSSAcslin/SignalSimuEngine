@@ -1,0 +1,18 @@
+[package]
+name = "signalforge"
+version = "0.1.0"
+description = "Modular scientific signal simulation workbench"
+authors = ["SignalForge"]
+edition = "2021"
+
+[lib]
+name = "signalforge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
