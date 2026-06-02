@@ -1510,6 +1510,51 @@ button {
   font-size: 11px;
 }
 
+.provenance-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid #d8e5ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbfd;
+}
+
+.provenance-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.provenance-box dl {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 6px 8px;
+  margin: 0;
+}
+
+.provenance-box dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.provenance-box dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .export-stack {
   display: grid;
   gap: 8px;

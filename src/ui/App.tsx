@@ -60,6 +60,7 @@ import {
   panValueRange,
   panView,
   parseCsvSignalData,
+  parseProjectJson,
   readSignalAtTime,
   removeGraphEdge,
   removeGraphNode,
@@ -68,6 +69,7 @@ import {
   selectSignalWindow,
   setDisplayNode,
   snapTimeToSample,
+  serializeProjectGraph,
   type ModuleDefinition,
   type OperationKind,
   type ParamValue,
@@ -128,8 +130,6 @@ const createNodeFromDefinition = (definition: ModuleDefinition, index: number, s
     kind: definition.kind as OperationKind
   };
 };
-
-const serializeProject = (graph: SignalGraph) => JSON.stringify(graph, null, 2);
 
 const parseArray = (value: string) =>
   value
@@ -1020,7 +1020,9 @@ const Timeline = ({
 const Inspector = ({
   node,
   signal,
+  analysis,
   error,
+  inputNames,
   sampleRate,
   totalDuration,
   onChangeNode,
@@ -1030,7 +1032,9 @@ const Inspector = ({
 }: {
   node?: SignalNode;
   signal?: Signal;
+  analysis?: AnalysisResult;
   error?: string;
+  inputNames: string[];
   sampleRate: number;
   totalDuration: number;
   onChangeNode: (node: SignalNode) => void;
@@ -1042,6 +1046,7 @@ const Inspector = ({
   const sourceStart = node?.type === "source" ? clampNumber(node.timelineOffset, 0, totalDuration, 0) : 0;
   const minSourceDuration = Math.max(1 / sampleRate, 0.000001);
   const maxSourceDuration = Math.max(minSourceDuration, totalDuration - sourceStart);
+  const outputLabel = signal ? "Signal" : analysis ? (analysis.type === "scalar" ? "Scalar analysis" : analysis.type === "spectrum" ? "Spectrum analysis" : "Time-frequency analysis") : "Unavailable";
 
   return (
     <aside className="inspector">
@@ -1119,6 +1124,22 @@ const Inspector = ({
             <strong>{signal ? signal.sampleRate.toLocaleString() : "-"}</strong>
             <span>Hz</span>
           </div>
+          <div className="provenance-box">
+            <div className="provenance-title">
+              <Activity size={14} />
+              <span>Run Summary</span>
+            </div>
+            <dl>
+              <dt>Module</dt>
+              <dd>{definition ? `${definition.label} / ${definition.type}` : node.kind}</dd>
+              <dt>Output</dt>
+              <dd>{outputLabel}</dd>
+              <dt>Inputs</dt>
+              <dd>{inputNames.length > 0 ? inputNames.join(", ") : "None"}</dd>
+              <dt>Status</dt>
+              <dd>{error ? "Error" : "Ready"}</dd>
+            </dl>
+          </div>
         </>
       )}
       <div className="export-stack">
@@ -1146,6 +1167,7 @@ const Inspector = ({
 export const App = () => {
   const [graph, setGraph] = useState<SignalGraph>(sampleGraph);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(sampleGraph.selectedNodeId ? [sampleGraph.selectedNodeId] : []);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
   const [connectFromId, setConnectFromId] = useState<string>();
@@ -1165,6 +1187,8 @@ export const App = () => {
   const selectedNodeId = selectedNodeIds[selectedNodeIds.length - 1] ?? graph.selectedNodeId;
   const evaluation = useMemo(() => evaluateGraph({ ...graph, selectedNodeId }), [graph, selectedNodeId]);
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
+  const selectedSignal = selectedNodeId ? evaluation.signals.get(selectedNodeId) : undefined;
+  const selectedAnalysis = selectedNodeId ? evaluation.analysis.get(selectedNodeId) : undefined;
   const displayNodeId = graph.displayNodeId ?? selectedNodeId;
   const displayNode = graph.nodes.find((node) => node.id === displayNodeId);
   const displaySignal = displayNodeId ? evaluation.signals.get(displayNodeId) : undefined;
@@ -1422,6 +1446,24 @@ export const App = () => {
     }
   };
 
+  const loadProjectFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const loaded = parseProjectJson(await file.text());
+      setGraph(loaded);
+      setUndoStack([]);
+      setRedoStack([]);
+      setSelectedNodeIds(loaded.selectedNodeId ? [loaded.selectedNodeId] : []);
+      setSelectedEdgeId(undefined);
+      setConnectFromId(undefined);
+      setCsvImportMessage(`Loaded ${file.name} with schema v${loaded.schemaVersion ?? 2}`);
+    } catch (error) {
+      setCsvImportMessage(error instanceof Error ? error.message : "Project load failed.");
+    } finally {
+      if (projectInputRef.current) projectInputRef.current.value = "";
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1458,9 +1500,20 @@ export const App = () => {
             accept=".csv,.txt,.tsv,text/csv,text/plain"
             onChange={(event) => void importCsvFile(event.target.files?.[0])}
           />
+          <input
+            ref={projectInputRef}
+            className="hidden-file-input"
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => void loadProjectFile(event.target.files?.[0])}
+          />
           <button onClick={() => csvInputRef.current?.click()}>
             <Upload size={15} />
             Import CSV
+          </button>
+          <button onClick={() => projectInputRef.current?.click()}>
+            <FileJson size={15} />
+            Load
           </button>
           <button onClick={undoGraph} disabled={undoStack.length === 0}>
             <Repeat size={15} />
@@ -1470,7 +1523,7 @@ export const App = () => {
             <Repeat size={15} />
             Redo
           </button>
-          <button onClick={() => downloadText("signalforge-project.json", serializeProject({ ...graph, selectedNodeId }), "application/json")}>
+          <button onClick={() => downloadText("signalforge-project.json", serializeProjectGraph({ ...graph, selectedNodeId }), "application/json")}>
             <Save size={15} />
             Save
           </button>
@@ -1631,12 +1684,14 @@ export const App = () => {
         </section>
         <Inspector
           node={selectedNode}
-          signal={displaySignal}
+          signal={selectedSignal}
           error={selectedNodeId ? evaluation.errors.get(selectedNodeId) : undefined}
           sampleRate={sampleRate}
           totalDuration={duration}
           onChangeNode={updateNode}
-          onExportProject={() => downloadText("signalforge-project.json", serializeProject({ ...graph, selectedNodeId }), "application/json")}
+          analysis={selectedAnalysis}
+          inputNames={selectedNodeId ? graph.edges.filter((edge) => edge.to === selectedNodeId).map((edge) => graph.nodes.find((node) => node.id === edge.from)?.name ?? edge.from) : []}
+          onExportProject={() => downloadText("signalforge-project.json", serializeProjectGraph({ ...graph, selectedNodeId }), "application/json")}
           onExportSignal={exportSelected}
           onExportPython={() => downloadText("signalforge-reproduce.py", exportPython({ ...graph, selectedNodeId }), "text/x-python")}
         />

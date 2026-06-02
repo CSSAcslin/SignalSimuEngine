@@ -3,6 +3,7 @@ export * from "./exporters";
 export * from "./graphEditing";
 export * from "./importers";
 export * from "./modules";
+export * from "./project";
 export * from "./sampleProject";
 export * from "./types";
 export * from "./view";
