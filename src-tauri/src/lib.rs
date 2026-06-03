@@ -26,11 +26,13 @@ struct TimeFrequencyResponse {
 #[tauri::command]
 fn run_time_frequency_analysis(request: TimeFrequencyRequest) -> Result<TimeFrequencyResponse, String> {
     use std::io::Write;
+    use std::path::PathBuf;
     use std::process::{Command, Stdio};
 
     const PY_SCRIPT: &str = include_str!("../python/time_frequency.py");
     let payload = serde_json::to_string(&request).map_err(|error| error.to_string())?;
-    let mut child = Command::new("python")
+    let python = project_python().unwrap_or_else(|| PathBuf::from("python"));
+    let mut child = Command::new(python)
         .arg("-c")
         .arg(PY_SCRIPT)
         .stdin(Stdio::piped())
@@ -54,4 +56,13 @@ fn run_time_frequency_analysis(request: TimeFrequencyRequest) -> Result<TimeFreq
     }
 
     serde_json::from_slice(&output.stdout).map_err(|error| format!("Invalid Python backend response: {error}"))
+}
+
+fn project_python() -> Option<std::path::PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let candidates = [
+        cwd.join(".venv").join("Scripts").join("python.exe"),
+        cwd.join("..").join(".venv").join("Scripts").join("python.exe"),
+    ];
+    candidates.into_iter().find(|path| path.exists())
 }
