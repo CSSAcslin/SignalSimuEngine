@@ -70,6 +70,7 @@ import {
   selectSignalWindow,
   setDisplayNode,
   snapTimeToSample,
+  summarizeAnalysisResult,
   serializeProjectGraph,
   type ModuleDefinition,
   type OperationKind,
@@ -425,6 +426,52 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
   }
 
   return <SpectrumBars spectrumData={{ frequency: analysis.frequency, magnitude: analysis.magnitude }} mode="linear" />;
+};
+
+const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => {
+  const summary = summarizeAnalysisResult(analysis);
+  const spectrumPoints =
+    analysis.type === "spectrum"
+      ? downsample(analysis.magnitude, 42).map((point, index, points) => {
+          const max = Math.max(...points.map((item) => item.value), 1e-12);
+          const x = (index / Math.max(points.length - 1, 1)) * 100;
+          const y = 26 - (point.value / max) * 22;
+          return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+      : [];
+
+  return (
+    <div className={`inspector-analysis ${summary.kind}`}>
+      <div className="provenance-title">
+        <Activity size={14} />
+        <span>Analysis Results</span>
+      </div>
+      <div className="analysis-inspector-head">
+        <span>{summary.primaryLabel}</span>
+        <strong>{summary.primaryText ?? formatValue(summary.primaryValue)}</strong>
+        {summary.unit ? <em>{summary.unit}</em> : null}
+      </div>
+      {analysis.type === "spectrum" ? (
+        <svg className="analysis-mini-spectrum" viewBox="0 0 100 30" preserveAspectRatio="none" aria-label={`${analysis.name} spectrum preview`}>
+          <path d={spectrumPoints.join(" ")} />
+        </svg>
+      ) : null}
+      {analysis.type === "time-frequency-pending" ? (
+        <div className="analysis-backend-note">
+          <span className="spinner tiny" />
+          <span>{analysis.message}</span>
+        </div>
+      ) : null}
+      <dl>
+        {summary.rows.map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd title={row.value}>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 };
 
 const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => void }) => {
@@ -1150,6 +1197,7 @@ const Inspector = ({
               <dd>{error ? "Error" : "Ready"}</dd>
             </dl>
           </div>
+          {analysis ? <InspectorAnalysisResult analysis={analysis} /> : null}
         </>
       )}
       <div className="export-stack">
