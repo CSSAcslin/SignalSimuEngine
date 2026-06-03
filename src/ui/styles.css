@@ -1561,6 +1561,14 @@ button {
   margin-top: 12px;
 }
 
+.export-stack-title {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .export-stack button {
   width: 100%;
 }

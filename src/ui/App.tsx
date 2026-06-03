@@ -6,7 +6,6 @@ import {
   CircleDot,
   Database,
   Copy,
-  Download,
   Eye,
   FileJson,
   FlaskConical,
@@ -1026,9 +1025,7 @@ const Inspector = ({
   sampleRate,
   totalDuration,
   onChangeNode,
-  onExportProject,
-  onExportSignal,
-  onExportPython
+  onExportNodeSignal
 }: {
   node?: SignalNode;
   signal?: Signal;
@@ -1038,9 +1035,7 @@ const Inspector = ({
   sampleRate: number;
   totalDuration: number;
   onChangeNode: (node: SignalNode) => void;
-  onExportProject: () => void;
-  onExportSignal: (format: "csv" | "npy") => void;
-  onExportPython: () => void;
+  onExportNodeSignal: (format: "csv" | "npy") => void;
 }) => {
   const definition = node ? getModuleDefinition(node.kind) : undefined;
   const sourceStart = node?.type === "source" ? clampNumber(node.timelineOffset, 0, totalDuration, 0) : 0;
@@ -1143,21 +1138,14 @@ const Inspector = ({
         </>
       )}
       <div className="export-stack">
-        <button onClick={onExportProject}>
-          <FileJson size={15} />
-          Project JSON
-        </button>
-        <button onClick={() => onExportSignal("csv")} disabled={!signal}>
+        <div className="export-stack-title">Selected Node Output</div>
+        <button onClick={() => onExportNodeSignal("csv")} disabled={!signal} title={signal ? `Export ${signal.name} as CSV` : "Selected node has no signal output"}>
           <ArrowDownToLine size={15} />
-          CSV
+          Node CSV
         </button>
-        <button onClick={() => onExportSignal("npy")} disabled={!signal}>
+        <button onClick={() => onExportNodeSignal("npy")} disabled={!signal} title={signal ? `Export ${signal.name} as NPY` : "Selected node has no signal output"}>
           <Braces size={15} />
-          NPY
-        </button>
-        <button onClick={onExportPython}>
-          <Download size={15} />
-          Python
+          Node NPY
         </button>
       </div>
     </aside>
@@ -1402,10 +1390,10 @@ export const App = () => {
     setSelectedEdgeId(undefined);
   };
 
-  const exportSelected = (format: "csv" | "npy") => {
-    if (!displaySignal) return;
-    if (format === "csv") downloadText(`${displaySignal.name}.csv`, exportCsv(displaySignal), "text/csv");
-    else downloadBlob(`${displaySignal.name}.npy`, exportNpyFloat64(displaySignal));
+  const exportSelectedNodeSignal = (format: "csv" | "npy") => {
+    if (!selectedSignal) return;
+    if (format === "csv") downloadText(`${selectedSignal.name}.csv`, exportCsv(selectedSignal), "text/csv");
+    else downloadBlob(`${selectedSignal.name}.npy`, exportNpyFloat64(selectedSignal));
   };
 
   const importCsvFile = async (file?: File) => {
@@ -1691,9 +1679,7 @@ export const App = () => {
           onChangeNode={updateNode}
           analysis={selectedAnalysis}
           inputNames={selectedNodeId ? graph.edges.filter((edge) => edge.to === selectedNodeId).map((edge) => graph.nodes.find((node) => node.id === edge.from)?.name ?? edge.from) : []}
-          onExportProject={() => downloadText("signalforge-project.json", serializeProjectGraph({ ...graph, selectedNodeId }), "application/json")}
-          onExportSignal={exportSelected}
-          onExportPython={() => downloadText("signalforge-reproduce.py", exportPython({ ...graph, selectedNodeId }), "text/x-python")}
+          onExportNodeSignal={exportSelectedNodeSignal}
         />
       </div>
     </main>
