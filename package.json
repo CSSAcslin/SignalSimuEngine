@@ -8,7 +8,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.7.0",
@@ -21,6 +23,7 @@
     "lucide-react": "^0.468.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
     "vitest": "^3.2.0",
     "jsdom": "^26.0.0"
   }

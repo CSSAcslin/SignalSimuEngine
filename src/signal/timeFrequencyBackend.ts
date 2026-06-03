@@ -45,7 +45,7 @@ export const runTimeFrequencyBackend = async (request: TimeFrequencyBackendReque
       name: request.name,
       method: request.method,
       status: "error",
-      message: "Tauri backend is unavailable in this browser session.",
+      message: "STFT/CWT require the Tauri desktop backend. Start the app with pnpm tauri:dev instead of the plain Vite browser preview.",
       params: request.params
     };
   }

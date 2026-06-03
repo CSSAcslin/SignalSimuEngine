@@ -44,7 +44,11 @@ def run_cwt(np, signal, values, sample_rate, params):
             t = np.linspace(-4, 4, support)
             wavelet = np.exp(1j * 5.0 * t) * np.exp(-0.5 * t * t)
             wavelet = wavelet / np.sqrt(max(width, 1))
-            matrix.append(np.convolve(values, np.conj(wavelet[::-1]), mode="same"))
+            convolved = np.convolve(values, np.conj(wavelet[::-1]), mode="same")
+            if convolved.size != values.size:
+                start = max(0, (convolved.size - values.size) // 2)
+                convolved = convolved[start : start + values.size]
+            matrix.append(convolved)
         matrix = np.asarray(matrix)
     time = np.arange(len(values)) / sample_rate
     frequency = sample_rate / np.maximum(widths, 1)

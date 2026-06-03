@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTimeFrequencyRequest, isTimeFrequencyNode } from "../src/signal";
+import { createTimeFrequencyRequest, isTimeFrequencyNode, runTimeFrequencyBackend } from "../src/signal";
 
 describe("time-frequency backend bridge", () => {
   it("creates backend requests from analysis nodes and input signals", () => {
@@ -33,5 +33,25 @@ describe("time-frequency backend bridge", () => {
   it("identifies only STFT and CWT nodes as backend time-frequency nodes", () => {
     expect(isTimeFrequencyNode({ id: "cwt", name: "CWT", type: "operation", kind: "cwt", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} })).toBe(true);
     expect(isTimeFrequencyNode({ id: "fft", name: "FFT", type: "operation", kind: "fft", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} })).toBe(false);
+  });
+
+  it("explains that STFT and CWT need the Tauri desktop backend", async () => {
+    const result = await runTimeFrequencyBackend({
+      nodeId: "stft",
+      name: "STFT",
+      method: "STFT",
+      sampleRate: 100,
+      values: [1, 0, -1],
+      params: {}
+    });
+
+    expect(result).toMatchObject({
+      type: "time-frequency-error",
+      status: "error"
+    });
+    if (result.type !== "time-frequency-error") {
+      throw new Error("Expected the browser preview path to return a time-frequency backend error.");
+    }
+    expect(result.message).toContain("pnpm tauri:dev");
   });
 });
