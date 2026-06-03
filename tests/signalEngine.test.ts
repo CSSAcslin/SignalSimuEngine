@@ -4,6 +4,8 @@ import {
   createNpyFloat64Bytes,
   evaluateGraph,
   exportCsv,
+  exportAnalysisCsv,
+  exportAnalysisJson,
   exportPython,
   normalizeSignal,
   type SignalGraph
@@ -355,6 +357,34 @@ describe("exports", () => {
     });
 
     expect(csv.trim()).toBe("time,value\n0,1\n0.5,-1");
+  });
+
+  it("exports scalar and spectrum analysis results", () => {
+    expect(
+      exportAnalysisCsv({
+        type: "scalar",
+        id: "rms",
+        name: "RMS",
+        label: "RMS",
+        value: 1.25,
+        unit: "a.u.",
+        params: {}
+      }).trim()
+    ).toBe("label,value,unit\nRMS,1.25,a.u.");
+
+    expect(
+      exportAnalysisCsv({
+        type: "spectrum",
+        id: "fft",
+        name: "FFT",
+        frequency: [0, 10],
+        magnitude: [0.1, 0.8],
+        unit: "a.u.",
+        params: {}
+      }).trim()
+    ).toBe("frequency,magnitude\n0,0.1\n10,0.8");
+
+    expect(JSON.parse(exportAnalysisJson({ type: "scalar", id: "mean", name: "Mean", label: "Mean", value: 2, unit: "a.u.", params: {} })).type).toBe("scalar");
   });
 
   it("exports a Python script that reconstructs source nodes and operations", () => {

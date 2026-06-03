@@ -49,6 +49,8 @@ import {
   duplicateGraphNode,
   duplicateGraphNodes,
   evaluateGraph,
+  exportAnalysisCsv,
+  exportAnalysisJson,
   exportCsv,
   exportNpyFloat64,
   exportPython,
@@ -207,6 +209,15 @@ const formatValue = (value: number | undefined) => {
   if (value === undefined || !Number.isFinite(value)) return "-";
   if (Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.001)) return value.toExponential(3);
   return value.toFixed(4);
+};
+
+const summarizeParams = (params: Record<string, ParamValue>) => {
+  const entries = Object.entries(params);
+  if (entries.length === 0) return "None";
+  return entries
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${Array.isArray(value) ? `[${value.length}]` : String(value)}`)
+    .join(", ");
 };
 
 const SignalLine = ({
@@ -1025,7 +1036,8 @@ const Inspector = ({
   sampleRate,
   totalDuration,
   onChangeNode,
-  onExportNodeSignal
+  onExportNodeSignal,
+  onExportNodeAnalysis
 }: {
   node?: SignalNode;
   signal?: Signal;
@@ -1036,6 +1048,7 @@ const Inspector = ({
   totalDuration: number;
   onChangeNode: (node: SignalNode) => void;
   onExportNodeSignal: (format: "csv" | "npy") => void;
+  onExportNodeAnalysis: (format: "csv" | "json") => void;
 }) => {
   const definition = node ? getModuleDefinition(node.kind) : undefined;
   const sourceStart = node?.type === "source" ? clampNumber(node.timelineOffset, 0, totalDuration, 0) : 0;
@@ -1131,6 +1144,8 @@ const Inspector = ({
               <dd>{outputLabel}</dd>
               <dt>Inputs</dt>
               <dd>{inputNames.length > 0 ? inputNames.join(", ") : "None"}</dd>
+              <dt>Params</dt>
+              <dd title={summarizeParams(node.params)}>{summarizeParams(node.params)}</dd>
               <dt>Status</dt>
               <dd>{error ? "Error" : "Ready"}</dd>
             </dl>
@@ -1139,14 +1154,29 @@ const Inspector = ({
       )}
       <div className="export-stack">
         <div className="export-stack-title">Selected Node Output</div>
-        <button onClick={() => onExportNodeSignal("csv")} disabled={!signal} title={signal ? `Export ${signal.name} as CSV` : "Selected node has no signal output"}>
-          <ArrowDownToLine size={15} />
-          Node CSV
-        </button>
-        <button onClick={() => onExportNodeSignal("npy")} disabled={!signal} title={signal ? `Export ${signal.name} as NPY` : "Selected node has no signal output"}>
-          <Braces size={15} />
-          Node NPY
-        </button>
+        {analysis ? (
+          <>
+            <button onClick={() => onExportNodeAnalysis("csv")} title={`Export ${analysis.name} analysis as CSV`}>
+              <ArrowDownToLine size={15} />
+              Analysis CSV
+            </button>
+            <button onClick={() => onExportNodeAnalysis("json")} title={`Export ${analysis.name} analysis as JSON`}>
+              <FileJson size={15} />
+              Analysis JSON
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => onExportNodeSignal("csv")} disabled={!signal} title={signal ? `Export ${signal.name} as CSV` : "Selected node has no signal output"}>
+              <ArrowDownToLine size={15} />
+              Node CSV
+            </button>
+            <button onClick={() => onExportNodeSignal("npy")} disabled={!signal} title={signal ? `Export ${signal.name} as NPY` : "Selected node has no signal output"}>
+              <Braces size={15} />
+              Node NPY
+            </button>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -1222,6 +1252,10 @@ export const App = () => {
     setTimeView((view) => clampView(view, duration));
     setTimeSelection((selection) => clampSelection(selection, { start: 0, end: duration }, duration));
   }, [duration]);
+
+  useEffect(() => {
+    if (displayAnalysis?.type === "spectrum") setChartMode("spectrum");
+  }, [displayAnalysis?.type, displayAnalysis?.id]);
 
   useEffect(() => {
     if (!connectionError) return;
@@ -1394,6 +1428,12 @@ export const App = () => {
     if (!selectedSignal) return;
     if (format === "csv") downloadText(`${selectedSignal.name}.csv`, exportCsv(selectedSignal), "text/csv");
     else downloadBlob(`${selectedSignal.name}.npy`, exportNpyFloat64(selectedSignal));
+  };
+
+  const exportSelectedNodeAnalysis = (format: "csv" | "json") => {
+    if (!selectedAnalysis) return;
+    if (format === "csv") downloadText(`${selectedAnalysis.name}.csv`, exportAnalysisCsv(selectedAnalysis), "text/csv");
+    else downloadText(`${selectedAnalysis.name}.json`, exportAnalysisJson(selectedAnalysis), "application/json");
   };
 
   const importCsvFile = async (file?: File) => {
@@ -1680,6 +1720,7 @@ export const App = () => {
           analysis={selectedAnalysis}
           inputNames={selectedNodeId ? graph.edges.filter((edge) => edge.to === selectedNodeId).map((edge) => graph.nodes.find((node) => node.id === edge.from)?.name ?? edge.from) : []}
           onExportNodeSignal={exportSelectedNodeSignal}
+          onExportNodeAnalysis={exportSelectedNodeAnalysis}
         />
       </div>
     </main>

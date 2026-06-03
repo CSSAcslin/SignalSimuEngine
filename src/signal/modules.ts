@@ -154,7 +154,8 @@ export const moduleDefinitions: ModuleDefinition[] = [
   },
   {
     kind: "fft",
-    type: "operation",
+    type: "analysis",
+    outputType: "spectrum",
     label: "FFT Spectrum",
     description: "Magnitude spectrum for analysis.",
     inputCount: 1,

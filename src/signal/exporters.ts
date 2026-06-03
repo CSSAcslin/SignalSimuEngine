@@ -1,4 +1,4 @@
-import type { Signal, SignalGraph, SignalNode } from "./types";
+import type { AnalysisResult, Signal, SignalGraph, SignalNode } from "./types";
 
 export const exportCsv = (signal: Signal) => {
   const rows = ["time,value"];
@@ -7,6 +7,24 @@ export const exportCsv = (signal: Signal) => {
   });
   return `${rows.join("\n")}\n`;
 };
+
+export const exportAnalysisCsv = (analysis: AnalysisResult) => {
+  if (analysis.type === "scalar") {
+    return `label,value,unit\n${analysis.label},${analysis.value},${analysis.unit}\n`;
+  }
+
+  if (analysis.type === "spectrum") {
+    const rows = ["frequency,magnitude"];
+    analysis.frequency.forEach((frequency, index) => {
+      rows.push(`${frequency},${analysis.magnitude[index] ?? 0}`);
+    });
+    return `${rows.join("\n")}\n`;
+  }
+
+  return `method,status,message\n${analysis.method},${analysis.status},${analysis.message}\n`;
+};
+
+export const exportAnalysisJson = (analysis: AnalysisResult) => JSON.stringify(analysis, null, 2);
 
 export const createNpyFloat64Bytes = (signal: Signal) => {
   const shape = `(${signal.values.length},)`;

@@ -9,12 +9,12 @@ describe("module definitions", () => {
   });
 
   it("declares first-stage analysis modules as analysis outputs", () => {
-    const analysisKinds = ["rms", "mean", "peak", "snr", "dominantFrequency", "bandwidth", "stft", "cwt"];
+    const analysisKinds = ["fft", "rms", "mean", "peak", "snr", "dominantFrequency", "bandwidth", "stft", "cwt"];
 
     analysisKinds.forEach((kind) => {
       const definition = moduleDefinitions.find((item) => item.kind === kind);
       expect(definition?.type).toBe("analysis");
-      expect(definition?.outputType).toBe(kind === "stft" || kind === "cwt" ? "time-frequency" : "scalar");
+      expect(definition?.outputType).toBe(kind === "stft" || kind === "cwt" ? "time-frequency" : kind === "fft" ? "spectrum" : "scalar");
     });
   });
 });
