@@ -4,18 +4,30 @@ SignalForge is a local scientific workstation for building one-dimensional simul
 
 ## Current MVP
 
-- Tauri-oriented project structure with a React + TypeScript + Vite frontend.
+- React + TypeScript + Vite web workstation, with an optional Tauri desktop shell.
+- Local Python/FastAPI analysis backend for SciPy-powered STFT and CWT.
 - One-dimensional discrete signal protocol.
-- Source modules: sine, cosine, square, pulse, chirp, white noise, constant, and inline import array.
-- Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, FFT spectrum, and normalization.
+- Source modules: sine, square, triangle, Gaussian pulse, pulse, chirp, white noise, constant, and inline import array.
+- Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, and normalization.
+- Analysis modules: FFT spectrum, STFT, and CWT.
 - Three-column workstation UI with module library, node canvas, timeline, parameter inspector, and time/frequency charts.
 - Project JSON, CSV, NumPy `.npy`, and Python reproduction script exports.
 
 ## Run
 
+For the full web experience, including STFT/CWT:
+
 ```powershell
 pnpm install
+.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+pnpm web:full
+```
+
+You can also run the two processes separately:
+
+```powershell
+pnpm backend:dev
 pnpm dev
 ```
 
-Tauri desktop packaging is scaffolded in `src-tauri/tauri.conf.json`. A Rust toolchain is required before running Tauri build commands.
+The web workspace talks to the local analysis service at `http://127.0.0.1:8765`. Tauri desktop packaging remains available in `src-tauri/tauri.conf.json`; a Rust toolchain is required before running Tauri build commands.

@@ -9,6 +9,8 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "backend:dev": ".venv\\Scripts\\python.exe -m uvicorn backend.server:app --host 127.0.0.1 --port 8765",
+    "web:full": "powershell -ExecutionPolicy Bypass -File scripts/dev-full.ps1",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
