@@ -86,12 +86,35 @@ export type TimeFrequencyPendingResult = {
   id: string;
   name: string;
   method: "STFT" | "CWT";
-  status: "pending";
+  status: "pending" | "running";
   message: string;
   params: Record<string, ParamValue>;
 };
 
-export type AnalysisResult = ScalarAnalysisResult | SpectrumAnalysisResult | TimeFrequencyPendingResult;
+export type TimeFrequencyAnalysisResult = {
+  type: "time-frequency";
+  id: string;
+  name: string;
+  method: "STFT" | "CWT";
+  status: "done";
+  time: number[];
+  frequency: number[];
+  power: number[][];
+  unit: string;
+  params: Record<string, ParamValue>;
+};
+
+export type TimeFrequencyErrorResult = {
+  type: "time-frequency-error";
+  id: string;
+  name: string;
+  method: "STFT" | "CWT";
+  status: "error";
+  message: string;
+  params: Record<string, ParamValue>;
+};
+
+export type AnalysisResult = ScalarAnalysisResult | SpectrumAnalysisResult | TimeFrequencyPendingResult | TimeFrequencyAnalysisResult | TimeFrequencyErrorResult;
 
 export type XYPosition = {
   x: number;

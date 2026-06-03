@@ -21,6 +21,16 @@ export const exportAnalysisCsv = (analysis: AnalysisResult) => {
     return `${rows.join("\n")}\n`;
   }
 
+  if (analysis.type === "time-frequency") {
+    const rows = ["frequency,time,power"];
+    analysis.frequency.forEach((frequency, rowIndex) => {
+      analysis.time.forEach((time, columnIndex) => {
+        rows.push(`${frequency},${time},${analysis.power[rowIndex]?.[columnIndex] ?? 0}`);
+      });
+    });
+    return `${rows.join("\n")}\n`;
+  }
+
   return `method,status,message\n${analysis.method},${analysis.status},${analysis.message}\n`;
 };
 

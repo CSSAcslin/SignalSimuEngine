@@ -6,5 +6,6 @@ export * from "./importers";
 export * from "./modules";
 export * from "./project";
 export * from "./sampleProject";
+export * from "./timeFrequencyBackend";
 export * from "./types";
 export * from "./view";

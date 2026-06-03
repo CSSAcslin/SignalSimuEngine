@@ -53,4 +53,37 @@ describe("analysis result summaries", () => {
     expect(summary.rows).toContainEqual({ label: "Status", value: "pending" });
     expect(summary.rows).toContainEqual({ label: "Expected Output", value: "time-frequency matrix" });
   });
+
+  it("summarizes completed and failed time-frequency analysis", () => {
+    const done = summarizeAnalysisResult({
+      type: "time-frequency",
+      id: "stft",
+      name: "STFT",
+      method: "STFT",
+      status: "done",
+      time: [0, 0.5],
+      frequency: [0, 10, 20],
+      power: [
+        [1, 0.2],
+        [0.5, 0.1],
+        [0.05, 0.02]
+      ],
+      unit: "power",
+      params: {}
+    });
+    const failed = summarizeAnalysisResult({
+      type: "time-frequency-error",
+      id: "cwt",
+      name: "CWT",
+      method: "CWT",
+      status: "error",
+      message: "SciPy is not installed.",
+      params: {}
+    });
+
+    expect(done.primaryText).toBe("3 x 2");
+    expect(done.rows).toContainEqual({ label: "Frequency Range", value: "0 - 20 Hz" });
+    expect(failed.primaryText).toBe("error");
+    expect(failed.rows).toContainEqual({ label: "Message", value: "SciPy is not installed." });
+  });
 });

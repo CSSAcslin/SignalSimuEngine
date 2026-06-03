@@ -51,6 +51,38 @@ export const summarizeAnalysisResult = (analysis: AnalysisResult): AnalysisSumma
     };
   }
 
+  if (analysis.type === "time-frequency") {
+    const firstFrequency = analysis.frequency[0] ?? 0;
+    const lastFrequency = analysis.frequency[analysis.frequency.length - 1] ?? firstFrequency;
+    const firstTime = analysis.time[0] ?? 0;
+    const lastTime = analysis.time[analysis.time.length - 1] ?? firstTime;
+    return {
+      kind: "time-frequency",
+      headline: analysis.method,
+      primaryLabel: "Matrix",
+      primaryText: `${analysis.frequency.length} x ${analysis.time.length}`,
+      rows: [
+        { label: "Status", value: analysis.status },
+        { label: "Frequency Range", value: `${textNumber(firstFrequency)} - ${textNumber(lastFrequency)} Hz` },
+        { label: "Time Range", value: `${textNumber(firstTime)} - ${textNumber(lastTime)} s` },
+        { label: "Unit", value: analysis.unit }
+      ]
+    };
+  }
+
+  if (analysis.type === "time-frequency-error") {
+    return {
+      kind: "time-frequency",
+      headline: analysis.method,
+      primaryLabel: "Backend Status",
+      primaryText: analysis.status,
+      rows: [
+        { label: "Status", value: analysis.status },
+        { label: "Message", value: analysis.message }
+      ]
+    };
+  }
+
   return {
     kind: "time-frequency",
     headline: analysis.method,

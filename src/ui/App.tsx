@@ -66,6 +66,9 @@ import {
   removeGraphEdge,
   removeGraphNode,
   removeGraphNodes,
+  createTimeFrequencyRequest,
+  isTimeFrequencyNode,
+  runTimeFrequencyBackend,
   sampleGraph,
   selectSignalWindow,
   setDisplayNode,
@@ -411,15 +414,40 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
     );
   }
 
-  if (analysis.type === "time-frequency-pending") {
+  if (analysis.type === "time-frequency-pending" || analysis.type === "time-frequency-error") {
     return (
       <div className="analysis-result-panel">
         <div className="analysis-pending-card">
-          <span className="spinner" />
+          {analysis.type === "time-frequency-pending" ? <span className="spinner" /> : null}
           <div>
-            <strong>{analysis.method} queued for backend</strong>
+            <strong>{analysis.method} {analysis.status === "running" ? "running" : analysis.status === "error" ? "backend error" : "queued for backend"}</strong>
             <p>{analysis.message}</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (analysis.type === "time-frequency") {
+    const flat = analysis.power.flat();
+    const max = Math.max(...flat, 1e-12);
+    const rows = analysis.power.slice(0, 48);
+    const columns = Math.max(...rows.map((row) => row.length), 1);
+    return (
+      <div className="time-frequency-panel">
+        <div className="time-frequency-grid" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+          {rows.flatMap((row, rowIndex) =>
+            row.map((value, columnIndex) => (
+              <span
+                key={`${rowIndex}-${columnIndex}`}
+                title={`${analysis.frequency[rowIndex]?.toFixed(3) ?? "-"} Hz, ${analysis.time[columnIndex]?.toFixed(3) ?? "-"} s, ${formatValue(value)}`}
+                style={{ opacity: 0.22 + 0.78 * (value / max) }}
+              />
+            ))
+          )}
+        </div>
+        <div className="chart-legend spectrum-peak">
+          <span><i />{analysis.method}: {analysis.frequency.length} x {analysis.time.length} time-frequency matrix</span>
         </div>
       </div>
     );
@@ -1250,15 +1278,17 @@ export const App = () => {
   const [undoStack, setUndoStack] = useState<SignalGraph[]>([]);
   const [redoStack, setRedoStack] = useState<SignalGraph[]>([]);
   const [csvImportMessage, setCsvImportMessage] = useState<string>();
+  const [timeFrequencyResults, setTimeFrequencyResults] = useState<Record<string, AnalysisResult>>({});
+  const [timeFrequencyRunningIds, setTimeFrequencyRunningIds] = useState<string[]>([]);
   const selectedNodeId = selectedNodeIds[selectedNodeIds.length - 1] ?? graph.selectedNodeId;
   const evaluation = useMemo(() => evaluateGraph({ ...graph, selectedNodeId }), [graph, selectedNodeId]);
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
   const selectedSignal = selectedNodeId ? evaluation.signals.get(selectedNodeId) : undefined;
-  const selectedAnalysis = selectedNodeId ? evaluation.analysis.get(selectedNodeId) : undefined;
+  const selectedAnalysis = selectedNodeId ? timeFrequencyResults[selectedNodeId] ?? evaluation.analysis.get(selectedNodeId) : undefined;
   const displayNodeId = graph.displayNodeId ?? selectedNodeId;
   const displayNode = graph.nodes.find((node) => node.id === displayNodeId);
   const displaySignal = displayNodeId ? evaluation.signals.get(displayNodeId) : undefined;
-  const displayAnalysis = displayNodeId ? evaluation.analysis.get(displayNodeId) : undefined;
+  const displayAnalysis = displayNodeId ? timeFrequencyResults[displayNodeId] ?? evaluation.analysis.get(displayNodeId) : undefined;
   const displaySpectrum = displayAnalysis?.type === "spectrum" ? { frequency: displayAnalysis.frequency, magnitude: displayAnalysis.magnitude } : undefined;
   const compareSignals = selectedNodeIds
     .filter((id) => id !== displayNodeId)
@@ -1300,6 +1330,44 @@ export const App = () => {
     setTimeView((view) => clampView(view, duration));
     setTimeSelection((selection) => clampSelection(selection, { start: 0, end: duration }, duration));
   }, [duration]);
+
+  useEffect(() => {
+    setTimeFrequencyResults({});
+    setTimeFrequencyRunningIds([]);
+  }, [graph.nodes, graph.edges, graph.sampleRate, graph.samples]);
+
+  useEffect(() => {
+    const targetIds = Array.from(new Set([selectedNodeId, displayNodeId].filter((id): id is string => Boolean(id))));
+    targetIds.forEach((nodeId) => {
+      const node = graph.nodes.find((item) => item.id === nodeId);
+      if (!node || node.type !== "operation" || !isTimeFrequencyNode(node)) return;
+      const baseAnalysis = evaluation.analysis.get(nodeId);
+      if (baseAnalysis?.type !== "time-frequency-pending") return;
+      if (timeFrequencyResults[nodeId] || timeFrequencyRunningIds.includes(nodeId)) return;
+      const inputEdge = graph.edges.find((edge) => edge.to === nodeId);
+      const inputSignal = inputEdge ? evaluation.signals.get(inputEdge.from) : undefined;
+      if (!inputSignal) return;
+
+      const request = createTimeFrequencyRequest(node, inputSignal);
+      setTimeFrequencyRunningIds((ids) => (ids.includes(nodeId) ? ids : [...ids, nodeId]));
+      setTimeFrequencyResults((results) => ({
+        ...results,
+        [nodeId]: {
+          type: "time-frequency-pending",
+          id: node.id,
+          name: node.name,
+          method: request.method,
+          status: "running",
+          message: "Running Python/SciPy backend...",
+          params: { ...node.params }
+        }
+      }));
+      void runTimeFrequencyBackend(request).then((result) => {
+        setTimeFrequencyResults((results) => ({ ...results, [nodeId]: result }));
+        setTimeFrequencyRunningIds((ids) => ids.filter((id) => id !== nodeId));
+      });
+    });
+  }, [displayNodeId, evaluation, graph.edges, graph.nodes, selectedNodeId, timeFrequencyResults, timeFrequencyRunningIds]);
 
   useEffect(() => {
     if (displayAnalysis?.type === "spectrum") setChartMode("spectrum");

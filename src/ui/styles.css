@@ -1193,6 +1193,31 @@ button {
   font-size: 12px;
 }
 
+.time-frequency-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.time-frequency-grid {
+  height: 188px;
+  display: grid;
+  align-items: stretch;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #dbe7ee;
+  border-radius: 8px;
+  padding: 4px;
+  background: #0f172a;
+}
+
+.time-frequency-grid span {
+  min-width: 2px;
+  min-height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #fef3c7, #a855f7 55%, #0ea5e9);
+}
+
 .spinner {
   width: 24px;
   height: 24px;

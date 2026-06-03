@@ -387,6 +387,26 @@ describe("exports", () => {
     expect(JSON.parse(exportAnalysisJson({ type: "scalar", id: "mean", name: "Mean", label: "Mean", value: 2, unit: "a.u.", params: {} })).type).toBe("scalar");
   });
 
+  it("exports time-frequency matrices as long-form CSV", () => {
+    const csv = exportAnalysisCsv({
+      type: "time-frequency",
+      id: "stft",
+      name: "STFT",
+      method: "STFT",
+      status: "done",
+      time: [0, 0.5],
+      frequency: [10, 20],
+      power: [
+        [1, 2],
+        [3, 4]
+      ],
+      unit: "power",
+      params: {}
+    });
+
+    expect(csv.trim()).toBe("frequency,time,power\n10,0,1\n10,0.5,2\n20,0,3\n20,0.5,4");
+  });
+
   it("exports a Python script that reconstructs source nodes and operations", () => {
     const graph: SignalGraph = {
       nodes: [
