@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   autoLayoutGraph,
   canConnectGraphNodes,
+  clearGraphCanvas,
   connectGraphNodes,
   duplicateGraphNode,
   duplicateGraphNodes,
@@ -143,5 +144,14 @@ describe("graph editing helpers", () => {
     expect(canConnectGraphNodes(connected, "c", "a")).toEqual({ ok: false, reason: "Connection would create a cycle." });
     expect(canConnectGraphNodes(connected, "a", "c")).toEqual({ ok: false, reason: "Normalize accepts 1 input." });
     expect(canConnectGraphNodes(graph, "b", "c")).toEqual({ ok: true });
+  });
+
+  it("clears the canvas while preserving global sampling settings", () => {
+    const cleared = clearGraphCanvas({ ...graph, sampleRate: 48000, samples: 1024, selectedNodeId: "a", displayNodeId: "b", disabledNodeIds: ["c"] });
+
+    expect(cleared).toMatchObject({ sampleRate: 48000, samples: 1024, nodes: [], edges: [] });
+    expect(cleared.selectedNodeId).toBeUndefined();
+    expect(cleared.displayNodeId).toBeUndefined();
+    expect(cleared.disabledNodeIds).toEqual([]);
   });
 });

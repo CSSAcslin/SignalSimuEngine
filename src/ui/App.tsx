@@ -40,6 +40,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   autoLayoutGraph,
   canConnectGraphNodes,
+  clearGraphCanvas,
   clampSelection,
   clampView,
   connectGraphNodes,
@@ -177,8 +178,8 @@ const moduleIconMap: Record<string, LucideIcon> = {
   fft: Activity,
   normalize: Focus,
   rms: Activity,
-  mean: Sigma,
-  peak: ArrowDownToLine,
+  quantiles: Sigma,
+  distribution: Database,
   snr: SlidersHorizontal,
   dominantFrequency: Waves,
   bandwidth: Maximize2,
@@ -417,6 +418,50 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
     );
   }
 
+  if (analysis.type === "summary") {
+    return (
+      <div className="analysis-result-panel">
+        <div className="analysis-summary-grid">
+          {analysis.metrics.map((metric) => (
+            <div className="analysis-metric-card compact" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{formatValue(metric.value)}</strong>
+              <em>{metric.unit}</em>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (analysis.type === "distribution") {
+    const maxCount = Math.max(...analysis.counts, 1);
+    const min = analysis.binEdges[0] ?? 0;
+    const max = analysis.binEdges[analysis.binEdges.length - 1] ?? min;
+    return (
+      <div className="axis-chart distribution-chart" role="img" aria-label={`${analysis.name} amplitude distribution`}>
+        <div className="spectrum-bars">
+          {analysis.counts.map((count, index) => (
+            <span
+              key={index}
+              className={count === maxCount ? "peak" : ""}
+              title={`${formatValue(analysis.binEdges[index] ?? 0)} - ${formatValue(analysis.binEdges[index + 1] ?? 0)} ${analysis.unit}, count ${count}`}
+              style={{ height: `${Math.max(4, (count / maxCount) * 100)}%` }}
+            />
+          ))}
+        </div>
+        <div className="x-axis">
+          <span>{formatValue(min)} {analysis.unit}</span>
+          <span>{formatValue((min + max) / 2)} {analysis.unit}</span>
+          <span>{formatValue(max)} {analysis.unit}</span>
+        </div>
+        <div className="chart-legend spectrum-peak">
+          <span><i />{analysis.counts.length} bins / {analysis.counts.reduce((sum, count) => sum + count, 0).toLocaleString()} samples</span>
+        </div>
+      </div>
+    );
+  }
+
   if (analysis.type === "time-frequency-pending" || analysis.type === "time-frequency-error") {
     return (
       <div className="analysis-result-panel">
@@ -481,6 +526,7 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
         })
       : [];
   const timeFrequencyView = analysis.type === "time-frequency" ? createTimeFrequencyView(analysis, { maxRows: 12, maxColumns: 32 }) : undefined;
+  const distributionMax = analysis.type === "distribution" ? Math.max(...analysis.counts, 1) : 1;
 
   return (
     <div className={`inspector-analysis ${summary.kind}`}>
@@ -506,6 +552,20 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
               title={`${cell.frequency.toFixed(3)} Hz, ${cell.time.toFixed(3)} s, ${formatValue(cell.value)}`}
               style={{ opacity: 0.18 + 0.82 * cell.intensity }}
             />
+          ))}
+        </div>
+      ) : null}
+      {analysis.type === "distribution" ? (
+        <div className="analysis-mini-distribution">
+          {analysis.counts.map((count, index) => (
+            <span key={index} style={{ height: `${Math.max(8, (count / distributionMax) * 100)}%` }} />
+          ))}
+        </div>
+      ) : null}
+      {analysis.type === "summary" ? (
+        <div className="analysis-summary-list">
+          {analysis.metrics.map((metric) => (
+            <span key={metric.label}>{metric.label}: {formatValue(metric.value)} {metric.unit}</span>
           ))}
         </div>
       ) : null}
@@ -1575,6 +1635,15 @@ export const App = () => {
     setSelectedEdgeId(undefined);
   };
 
+  const clearCanvas = () => {
+    commitGraph((current) => clearGraphCanvas(current));
+    setSelectedNodeIds([]);
+    setSelectedEdgeId(undefined);
+    setConnectFromId(undefined);
+    setTimeFrequencyResults({});
+    setTimeFrequencyRunningIds([]);
+  };
+
   const duplicateNodeById = (nodeId?: string) => {
     if (!nodeId) return;
     commitGraph((current) => {
@@ -1794,6 +1863,10 @@ export const App = () => {
               <p className="canvas-shortcuts">Left-drag pans. Shift-drag box selects. Shift+scroll zooms. Ctrl+Z/Y undo/redo. Delete removes selection.</p>
             </div>
             <div className="canvas-status-group">
+              <button className="canvas-action-button" onClick={clearCanvas} disabled={graph.nodes.length === 0} title="Clear all canvas nodes and edges">
+                <Trash2 size={14} />
+                Clear
+              </button>
               <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length} />
               <div className="status-chip">
                 <Sparkles size={14} />

@@ -374,6 +374,44 @@ describe("operation modules", () => {
     expect(result.analysis.get("stft")).toMatchObject({ type: "time-frequency-pending", method: "STFT", status: "pending" });
     expect(result.analysis.get("cwt")).toMatchObject({ type: "time-frequency-pending", method: "CWT", status: "pending" });
   });
+
+  it("computes quantile summary analysis with mean min max and arbitrary percentile", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 5, params: { values: [1, 2, 3, 4, 100] } },
+        { id: "q", type: "operation", kind: "quantiles", name: "Quantiles", position: { x: 0, y: 0 }, timelineOffset: 0, params: { percentile: 50 } }
+      ],
+      edges: [{ id: "x-q", from: "x", to: "q" }]
+    };
+
+    const analysis = evaluateGraph(graph).analysis.get("q");
+
+    expect(analysis?.type).toBe("summary");
+    if (analysis?.type !== "summary") throw new Error("Expected summary analysis.");
+    expect(Object.fromEntries(analysis.metrics.map((item) => [item.label, item.value]))).toMatchObject({
+      Mean: 22,
+      Min: 1,
+      Max: 100,
+      P50: 3
+    });
+  });
+
+  it("computes distribution analysis histogram bins", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 5, params: { values: [0, 0.2, 0.8, 1.2, 1.8] } },
+        { id: "dist", type: "operation", kind: "distribution", name: "Distribution", position: { x: 0, y: 0 }, timelineOffset: 0, params: { bins: 2 } }
+      ],
+      edges: [{ id: "x-dist", from: "x", to: "dist" }]
+    };
+
+    const analysis = evaluateGraph(graph).analysis.get("dist");
+
+    expect(analysis?.type).toBe("distribution");
+    if (analysis?.type !== "distribution") throw new Error("Expected distribution analysis.");
+    expect(analysis.counts).toEqual([3, 2]);
+    expect(analysis.binEdges).toEqual([0, 0.9, 1.8]);
+  });
 });
 
 describe("exports", () => {
@@ -417,6 +455,32 @@ describe("exports", () => {
     ).toBe("# SignalForge analysis export\n# node=fft\n# type=spectrum\n# params={}\nfrequency,magnitude\n0,0.1\n10,0.8");
 
     expect(JSON.parse(exportAnalysisJson({ type: "scalar", id: "mean", name: "Mean", label: "Mean", value: 2, unit: "a.u.", params: {} })).type).toBe("scalar");
+  });
+
+  it("exports summary and distribution analysis results", () => {
+    const summary: AnalysisResult = {
+      type: "summary",
+      id: "q",
+      name: "Quantiles",
+      metrics: [
+        { label: "Mean", value: 2, unit: "a.u." },
+        { label: "P90", value: 3, unit: "a.u." }
+      ],
+      params: {}
+    };
+    const distribution: AnalysisResult = {
+      type: "distribution",
+      id: "d",
+      name: "Distribution",
+      binEdges: [0, 1, 2],
+      counts: [3, 4],
+      density: [0.3, 0.4],
+      unit: "a.u.",
+      params: {}
+    };
+
+    expect(exportAnalysisCsv(summary).trim()).toContain("label,value,unit\nMean,2,a.u.\nP90,3,a.u.");
+    expect(exportAnalysisCsv(distribution).trim()).toContain("binStart,binEnd,count,density\n0,1,3,0.3\n1,2,4,0.4");
   });
 
   it("exports time-frequency matrices as long-form CSV", () => {

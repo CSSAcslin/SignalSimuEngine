@@ -190,6 +190,17 @@ export const fftSpectrum = (signal: Signal): Spectrum => {
 
 const meanValue = (values: number[]) => (values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length);
 
+const percentileValue = (values: number[], percentile: number) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const p = Math.min(100, Math.max(0, percentile));
+  const position = (p / 100) * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  const weight = position - lower;
+  return (sorted[lower] ?? 0) * (1 - weight) + (sorted[upper] ?? sorted[lower] ?? 0) * weight;
+};
+
 const scalarAnalysis = (node: OperationNode, inputs: Signal[], label: string, value: number, unit: string): AnalysisResult => ({
   type: "scalar",
   id: node.id,
@@ -215,6 +226,52 @@ const spectralAnalysis = (node: OperationNode, signal: Signal): { spectrum: Spec
       params: { ...node.params },
       provenance: nodeProvenance(node, [signal.provenance?.nodeId ?? signal.id], signal.sampleRate, signal.values.length, signal.unit)
     }
+  };
+};
+
+const quantileAnalysis = (node: OperationNode, inputs: Signal[]): AnalysisResult => {
+  const signal = inputs[0];
+  const values = signal.values;
+  const percentile = Math.min(100, Math.max(0, asNumber(node.params.percentile, 50)));
+  return {
+    type: "summary",
+    id: node.id,
+    name: node.name,
+    metrics: [
+      { label: "Mean", value: meanValue(values), unit: signal.unit },
+      { label: "Min", value: Math.min(...values), unit: signal.unit },
+      { label: "Max", value: Math.max(...values), unit: signal.unit },
+      { label: `P${Number(percentile.toPrecision(4))}`, value: percentileValue(values, percentile), unit: signal.unit }
+    ],
+    params: { ...node.params, percentile },
+    provenance: nodeProvenance(node, inputs.map((item) => item.provenance?.nodeId ?? item.id), signal.sampleRate, signal.values.length, signal.unit)
+  };
+};
+
+const distributionAnalysis = (node: OperationNode, inputs: Signal[]): AnalysisResult => {
+  const signal = inputs[0];
+  const values = signal.values;
+  const bins = Math.min(200, Math.max(1, Math.floor(asNumber(node.params.bins, 24))));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const width = span / bins;
+  const counts = Array(bins).fill(0) as number[];
+  values.forEach((value) => {
+    const index = Math.min(bins - 1, Math.max(0, Math.floor((value - min) / width)));
+    counts[index] += 1;
+  });
+  const binEdges = Array.from({ length: bins + 1 }, (_, index) => min + width * index);
+  return {
+    type: "distribution",
+    id: node.id,
+    name: node.name,
+    binEdges,
+    counts,
+    density: counts.map((count) => count / Math.max(values.length, 1)),
+    unit: signal.unit,
+    params: { ...node.params, bins },
+    provenance: nodeProvenance(node, inputs.map((item) => item.provenance?.nodeId ?? item.id), signal.sampleRate, signal.values.length, signal.unit)
   };
 };
 
@@ -283,6 +340,10 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
       return { analysis: scalarAnalysis(node, inputs, "Mean", meanValue(inputs[0].values), inputs[0].unit) };
     case "peak":
       return { analysis: scalarAnalysis(node, inputs, "Peak", Math.max(...inputs[0].values.map((value) => Math.abs(value)), 0), inputs[0].unit) };
+    case "quantiles":
+      return { analysis: quantileAnalysis(node, inputs) };
+    case "distribution":
+      return { analysis: distributionAnalysis(node, inputs) };
     case "snr": {
       const signalPower = meanValue(inputs[0].values.map((value) => value * value));
       const noiseFloor = Math.max(asNumber(node.params.noiseFloor, 0.1), 1e-12);

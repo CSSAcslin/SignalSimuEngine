@@ -179,22 +179,22 @@ export const moduleDefinitions: ModuleDefinition[] = [
     params: []
   },
   {
-    kind: "mean",
+    kind: "quantiles",
     type: "analysis",
-    outputType: "scalar",
-    label: "Mean",
-    description: "Arithmetic mean value.",
+    outputType: "summary",
+    label: "Quantiles",
+    description: "Mean, min, max, and a selected percentile.",
     inputCount: 1,
-    params: []
+    params: [{ key: "percentile", label: "Percentile", type: "number", defaultValue: 50, min: 0, max: 100, step: 1, unit: "%" }]
   },
   {
-    kind: "peak",
+    kind: "distribution",
     type: "analysis",
-    outputType: "scalar",
-    label: "Peak",
-    description: "Maximum absolute amplitude.",
+    outputType: "distribution",
+    label: "Distribution",
+    description: "Histogram counts and density over amplitude bins.",
     inputCount: 1,
-    params: []
+    params: [{ key: "bins", label: "Bins", type: "number", defaultValue: 24, min: 1, max: 200, step: 1 }]
   },
   {
     kind: "snr",

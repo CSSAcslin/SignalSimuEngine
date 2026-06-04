@@ -82,6 +82,15 @@ export const setDisplayNode = (graph: SignalGraph, nodeId: string): SignalGraph 
   return { ...graph, displayNodeId: nodeId };
 };
 
+export const clearGraphCanvas = (graph: SignalGraph): SignalGraph => ({
+  ...graph,
+  nodes: [],
+  edges: [],
+  disabledNodeIds: [],
+  selectedNodeId: undefined,
+  displayNodeId: undefined
+});
+
 export const duplicateGraphNode = (graph: SignalGraph, nodeId: string): SignalGraph => {
   const node = graph.nodes.find((item) => item.id === nodeId);
   if (!node) return graph;

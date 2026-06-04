@@ -9,12 +9,13 @@ SignalForge is a local scientific workstation for building one-dimensional simul
 - One-dimensional discrete signal protocol.
 - Source modules: sine, square, triangle, Gaussian pulse, pulse, chirp, white noise, constant, and inline import array.
 - Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, and normalization.
-- Analysis modules: FFT spectrum, STFT, and CWT.
+- Analysis modules: FFT spectrum, RMS, quantile summary, distribution histogram, SNR, dominant frequency, bandwidth, STFT, and CWT.
 - Three-column workstation UI with module library, node canvas, timeline, parameter inspector, and time/frequency charts.
 - Analysis backend status indicator for SciPy-powered modules.
 - Project JSON, signal CSV, NumPy `.npy`, analysis CSV/JSON, and Python reproduction script exports.
 - STFT/CWT exports support both long-form CSV (`frequency,time,power`) and matrix CSV (`frequency\time` table).
 - Signal and analysis outputs include provenance metadata: source node, input nodes, params, sample rate, sample count, unit, and backend where relevant.
+- The node canvas includes a clear action that removes all nodes and edges while preserving global sampling settings.
 
 ## Run
 

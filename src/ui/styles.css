@@ -373,6 +373,25 @@ button {
   justify-content: flex-end;
 }
 
+.canvas-action-button {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #b91c1c;
+  background: #fff7f7;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.canvas-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .status-chip {
   gap: 6px;
   border: 1px solid #bde7d0;
@@ -1186,6 +1205,23 @@ button {
   text-align: center;
 }
 
+.analysis-summary-grid {
+  width: min(680px, 100%);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.analysis-metric-card.compact {
+  min-width: 0;
+  padding: 14px 12px;
+}
+
+.analysis-metric-card.compact strong {
+  font-size: 22px;
+}
+
 .analysis-metric-card span {
   color: #64748b;
   font-size: 12px;
@@ -1751,6 +1787,33 @@ button {
   min-height: 2px;
   border-radius: 1px;
   background: linear-gradient(180deg, #fef3c7, #a855f7 55%, #38bdf8);
+}
+
+.analysis-mini-distribution {
+  height: 38px;
+  display: flex;
+  align-items: end;
+  gap: 2px;
+  border: 1px solid #e9d5ff;
+  border-radius: 6px;
+  padding: 4px;
+  background: #ffffff;
+}
+
+.analysis-mini-distribution span {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #a855f7, #38bdf8);
+}
+
+.analysis-summary-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  color: #581c87;
+  font-size: 11px;
+  font-weight: 760;
 }
 
 .analysis-backend-note {

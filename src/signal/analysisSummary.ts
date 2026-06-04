@@ -51,6 +51,36 @@ export const summarizeAnalysisResult = (analysis: AnalysisResult): AnalysisSumma
     };
   }
 
+  if (analysis.type === "summary") {
+    const primary = analysis.metrics[0];
+    return {
+      kind: "scalar",
+      headline: analysis.name,
+      primaryLabel: primary?.label ?? "Summary",
+      primaryValue: primary?.value ?? 0,
+      unit: primary?.unit,
+      rows: analysis.metrics.map((metric) => ({ label: metric.label, value: `${textNumber(metric.value)} ${metric.unit}` }))
+    };
+  }
+
+  if (analysis.type === "distribution") {
+    const peakIndex = analysis.counts.reduce((best, value, index) => (value > analysis.counts[best] ? index : best), 0);
+    const peakStart = analysis.binEdges[peakIndex] ?? 0;
+    const peakEnd = analysis.binEdges[peakIndex + 1] ?? peakStart;
+    return {
+      kind: "spectrum",
+      headline: analysis.name,
+      primaryLabel: "Mode Bin",
+      primaryText: `${textNumber(peakStart)} - ${textNumber(peakEnd)}`,
+      unit: analysis.unit,
+      rows: [
+        { label: "Bins", value: String(analysis.counts.length) },
+        { label: "Peak Count", value: String(analysis.counts[peakIndex] ?? 0) },
+        { label: "Range", value: `${textNumber(analysis.binEdges[0] ?? 0)} - ${textNumber(analysis.binEdges[analysis.binEdges.length - 1] ?? 0)} ${analysis.unit}` }
+      ]
+    };
+  }
+
   if (analysis.type === "time-frequency") {
     const firstFrequency = analysis.frequency[0] ?? 0;
     const lastFrequency = analysis.frequency[analysis.frequency.length - 1] ?? firstFrequency;

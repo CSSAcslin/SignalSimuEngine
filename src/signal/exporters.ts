@@ -39,6 +39,20 @@ export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "ma
     return `${rows.join("\n")}\n`;
   }
 
+  if (analysis.type === "summary") {
+    const rows = [header, "label,value,unit"];
+    analysis.metrics.forEach((metric) => rows.push(`${metric.label},${metric.value},${metric.unit}`));
+    return `${rows.join("\n")}\n`;
+  }
+
+  if (analysis.type === "distribution") {
+    const rows = [header, "binStart,binEnd,count,density"];
+    analysis.counts.forEach((count, index) => {
+      rows.push(`${analysis.binEdges[index] ?? 0},${analysis.binEdges[index + 1] ?? 0},${count},${analysis.density[index] ?? 0}`);
+    });
+    return `${rows.join("\n")}\n`;
+  }
+
   if (analysis.type === "time-frequency") {
     if (format === "matrix") {
       const rows = [header, `frequency\\time,${analysis.time.join(",")}`];
@@ -155,6 +169,14 @@ export const exportPython = (graph: SignalGraph) => {
     "    if kind == 'rms': return np.sqrt(np.mean(inputs[0] ** 2))",
     "    if kind == 'mean': return np.mean(inputs[0])",
     "    if kind == 'peak': return np.max(np.abs(inputs[0]))",
+    "    if kind == 'quantiles':",
+    "        p = min(100, max(0, params.get('percentile', 50)))",
+    "        return {'Mean': float(np.mean(inputs[0])), 'Min': float(np.min(inputs[0])), 'Max': float(np.max(inputs[0])), f'P{p:g}': float(np.percentile(inputs[0], p))}",
+    "    if kind == 'distribution':",
+    "        bins = int(min(200, max(1, params.get('bins', 24))))",
+    "        counts, edges = np.histogram(inputs[0], bins=bins)",
+    "        density = counts / max(len(inputs[0]), 1)",
+    "        return {'binEdges': edges.tolist(), 'counts': counts.tolist(), 'density': density.tolist()}",
     "    if kind == 'snr':",
     "        noise = max(params.get('noiseFloor', 0.1), 1e-12)",
     "        return 10 * np.log10(max(np.mean(inputs[0] ** 2), 1e-24) / (noise * noise))",

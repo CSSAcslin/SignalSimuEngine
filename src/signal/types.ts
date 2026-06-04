@@ -22,6 +22,8 @@ export type OperationKind =
   | "rms"
   | "mean"
   | "peak"
+  | "quantiles"
+  | "distribution"
   | "snr"
   | "dominantFrequency"
   | "bandwidth"
@@ -97,6 +99,27 @@ export type SpectrumAnalysisResult = {
   provenance?: ResultProvenance;
 };
 
+export type SummaryAnalysisResult = {
+  type: "summary";
+  id: string;
+  name: string;
+  metrics: Array<{ label: string; value: number; unit: string }>;
+  params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
+};
+
+export type DistributionAnalysisResult = {
+  type: "distribution";
+  id: string;
+  name: string;
+  binEdges: number[];
+  counts: number[];
+  density: number[];
+  unit: string;
+  params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
+};
+
 export type TimeFrequencyPendingResult = {
   type: "time-frequency-pending";
   id: string;
@@ -133,7 +156,7 @@ export type TimeFrequencyErrorResult = {
   provenance?: ResultProvenance;
 };
 
-export type AnalysisResult = ScalarAnalysisResult | SpectrumAnalysisResult | TimeFrequencyPendingResult | TimeFrequencyAnalysisResult | TimeFrequencyErrorResult;
+export type AnalysisResult = ScalarAnalysisResult | SpectrumAnalysisResult | SummaryAnalysisResult | DistributionAnalysisResult | TimeFrequencyPendingResult | TimeFrequencyAnalysisResult | TimeFrequencyErrorResult;
 
 export type XYPosition = {
   x: number;
@@ -191,7 +214,7 @@ export type GraphEvaluation = {
 export type ModuleDefinition = {
   kind: NodeKind;
   type: "source" | "operation" | "analysis";
-  outputType?: "signal" | "scalar" | "spectrum" | "time-frequency";
+  outputType?: "signal" | "scalar" | "summary" | "spectrum" | "distribution" | "time-frequency";
   label: string;
   description: string;
   inputCount: number | "many";
