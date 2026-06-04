@@ -14,6 +14,7 @@ SignalForge is a local scientific workstation for building one-dimensional simul
 - Analysis backend status indicator for SciPy-powered modules.
 - Project JSON, signal CSV, NumPy `.npy`, analysis CSV/JSON, and Python reproduction script exports.
 - STFT/CWT exports support both long-form CSV (`frequency,time,power`) and matrix CSV (`frequency\time` table).
+- Signal and analysis outputs include provenance metadata: source node, input nodes, params, sample rate, sample count, unit, and backend where relevant.
 
 ## Run
 
@@ -35,3 +36,5 @@ pnpm dev
 The web workspace talks to the local analysis service at `http://127.0.0.1:8765`. Tauri desktop packaging remains available in `src-tauri/tauri.conf.json`; a Rust toolchain is required before running Tauri build commands.
 
 The top bar shows the local analysis backend state. If it is offline, STFT/CWT nodes will show an actionable message and the web UI can keep running while you start `pnpm backend:dev`.
+
+Project JSON includes `SignalForge 1D Signal Protocol` metadata. CSV exports include comment headers beginning with `#`; SignalForge's CSV importer ignores those headers when re-importing exported signals.

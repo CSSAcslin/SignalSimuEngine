@@ -112,6 +112,32 @@ describe("operation modules", () => {
     const result = evaluateGraph(graph).signals.get("multiply");
 
     expect(result?.values).toEqual([6, 6, 6, 6]);
+    expect(result?.provenance).toMatchObject({
+      nodeId: "multiply",
+      nodeName: "Multiply",
+      nodeKind: "multiply",
+      inputNodeIds: ["a", "b"]
+    });
+  });
+
+  it("records provenance for generated source signals", () => {
+    const signal = createSourceSignal({
+      id: "src",
+      kind: "constant",
+      name: "Reference",
+      sampleRate: 10,
+      length: 3,
+      params: { value: 2 }
+    });
+
+    expect(signal.provenance).toMatchObject({
+      nodeId: "src",
+      nodeName: "Reference",
+      nodeKind: "constant",
+      inputNodeIds: [],
+      sampleRate: 10,
+      sampleCount: 3
+    });
   });
 
   it("places source signals on the global sample grid using start time and duration", () => {
@@ -294,6 +320,11 @@ describe("operation modules", () => {
     const rms = result.analysis.get("rms");
 
     expect(rms).toMatchObject({ type: "scalar", label: "RMS", unit: "a.u." });
+    expect(rms?.provenance).toMatchObject({
+      nodeId: "rms",
+      nodeKind: "rms",
+      inputNodeIds: ["x"]
+    });
     expect(rms?.type === "scalar" ? rms.value : undefined).toBeCloseTo(Math.sqrt(7.5));
     expect(result.signals.has("rms")).toBe(false);
     expect(result.errors.get("scale")).toBe("Input RMS is an analysis result and cannot feed signal operations.");
@@ -357,7 +388,7 @@ describe("exports", () => {
       params: {}
     });
 
-    expect(csv.trim()).toBe("time,value\n0,1\n0.5,-1");
+    expect(csv.trim()).toBe("# SignalForge signal export\n# node=s\n# sampleRate=2\n# unit=a.u.\n# params={}\ntime,value\n0,1\n0.5,-1");
   });
 
   it("exports scalar and spectrum analysis results", () => {
@@ -371,7 +402,7 @@ describe("exports", () => {
         unit: "a.u.",
         params: {}
       }).trim()
-    ).toBe("label,value,unit\nRMS,1.25,a.u.");
+    ).toBe("# SignalForge analysis export\n# node=rms\n# type=scalar\n# params={}\nlabel,value,unit\nRMS,1.25,a.u.");
 
     expect(
       exportAnalysisCsv({
@@ -383,7 +414,7 @@ describe("exports", () => {
         unit: "a.u.",
         params: {}
       }).trim()
-    ).toBe("frequency,magnitude\n0,0.1\n10,0.8");
+    ).toBe("# SignalForge analysis export\n# node=fft\n# type=spectrum\n# params={}\nfrequency,magnitude\n0,0.1\n10,0.8");
 
     expect(JSON.parse(exportAnalysisJson({ type: "scalar", id: "mean", name: "Mean", label: "Mean", value: 2, unit: "a.u.", params: {} })).type).toBe("scalar");
   });
@@ -406,8 +437,8 @@ describe("exports", () => {
     };
     const csv = exportAnalysisCsv(analysis);
 
-    expect(csv.trim()).toBe("frequency,time,power\n10,0,1\n10,0.5,2\n20,0,3\n20,0.5,4");
-    expect(exportAnalysisCsv(analysis, "matrix").trim()).toBe("frequency\\time,0,0.5\n10,1,2\n20,3,4");
+    expect(csv.trim()).toBe("# SignalForge analysis export\n# node=stft\n# type=time-frequency\n# params={}\nfrequency,time,power\n10,0,1\n10,0.5,2\n20,0,3\n20,0.5,4");
+    expect(exportAnalysisCsv(analysis, "matrix").trim()).toBe("# SignalForge analysis export\n# node=stft\n# type=time-frequency\n# params={}\nfrequency\\time,0,0.5\n10,1,2\n20,3,4");
   });
 
   it("exports a Python script that reconstructs source nodes and operations", () => {

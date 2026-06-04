@@ -1,7 +1,18 @@
 import type { AnalysisResult, Signal, SignalGraph, SignalNode } from "./types";
 
+const csvComments = (lines: string[]) => `${lines.map((line) => `# ${line}`).join("\n")}\n`;
+
 export const exportCsv = (signal: Signal) => {
-  const rows = ["time,value"];
+  const rows = [
+    csvComments([
+      "SignalForge signal export",
+      `node=${signal.provenance?.nodeId ?? signal.id}`,
+      `sampleRate=${signal.sampleRate}`,
+      `unit=${signal.unit}`,
+      `params=${JSON.stringify(signal.params ?? {})}`
+    ]).trimEnd(),
+    "time,value"
+  ];
   signal.time.forEach((time, index) => {
     rows.push(`${time},${signal.values[index] ?? 0}`);
   });
@@ -9,12 +20,19 @@ export const exportCsv = (signal: Signal) => {
 };
 
 export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "matrix" = "long") => {
+  const header = csvComments([
+    "SignalForge analysis export",
+    `node=${analysis.provenance?.nodeId ?? analysis.id}`,
+    `type=${analysis.type}`,
+    `params=${JSON.stringify(analysis.params ?? {})}`
+  ]).trimEnd();
+
   if (analysis.type === "scalar") {
-    return `label,value,unit\n${analysis.label},${analysis.value},${analysis.unit}\n`;
+    return `${header}\nlabel,value,unit\n${analysis.label},${analysis.value},${analysis.unit}\n`;
   }
 
   if (analysis.type === "spectrum") {
-    const rows = ["frequency,magnitude"];
+    const rows = [header, "frequency,magnitude"];
     analysis.frequency.forEach((frequency, index) => {
       rows.push(`${frequency},${analysis.magnitude[index] ?? 0}`);
     });
@@ -23,13 +41,13 @@ export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "ma
 
   if (analysis.type === "time-frequency") {
     if (format === "matrix") {
-      const rows = [`frequency\\time,${analysis.time.join(",")}`];
+      const rows = [header, `frequency\\time,${analysis.time.join(",")}`];
       analysis.frequency.forEach((frequency, rowIndex) => {
         rows.push(`${frequency},${analysis.time.map((_, columnIndex) => analysis.power[rowIndex]?.[columnIndex] ?? 0).join(",")}`);
       });
       return `${rows.join("\n")}\n`;
     }
-    const rows = ["frequency,time,power"];
+    const rows = [header, "frequency,time,power"];
     analysis.frequency.forEach((frequency, rowIndex) => {
       analysis.time.forEach((time, columnIndex) => {
         rows.push(`${frequency},${time},${analysis.power[rowIndex]?.[columnIndex] ?? 0}`);
@@ -38,7 +56,7 @@ export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "ma
     return `${rows.join("\n")}\n`;
   }
 
-  return `method,status,message\n${analysis.method},${analysis.status},${analysis.message}\n`;
+  return `${header}\nmethod,status,message\n${analysis.method},${analysis.status},${analysis.message}\n`;
 };
 
 export const exportAnalysisJson = (analysis: AnalysisResult) => JSON.stringify(analysis, null, 2);
@@ -88,6 +106,9 @@ const operationLine = (node: SignalNode, inputs: string[]) => {
 
 export const exportPython = (graph: SignalGraph) => {
   const lines: string[] = [
+    "# SignalForge Python reproduction script",
+    "# Protocol: SignalForge 1D Signal Protocol v3",
+    "# Time-frequency nodes require SciPy-compatible execution.",
     "import numpy as np",
     "",
     "def make_source(kind, sample_rate, length, params, seed=None):",

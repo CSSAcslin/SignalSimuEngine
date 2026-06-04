@@ -1,6 +1,7 @@
 import type { ParamValue, SignalGraph, SignalNode } from "./types";
 
 export const CURRENT_PROJECT_SCHEMA_VERSION = 2;
+export const CURRENT_SIGNAL_PROTOCOL_VERSION = 3;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -100,9 +101,19 @@ export const serializeProjectGraph = (graph: SignalGraph) =>
     {
       ...graph,
       schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
+      protocol: {
+        name: "SignalForge 1D Signal Protocol",
+        version: CURRENT_SIGNAL_PROTOCOL_VERSION,
+        signalFields: ["sampleRate", "unit", "time", "values", "params", "provenance"],
+        analysisFields: ["type", "params", "unit", "provenance"]
+      },
       metadata: {
         app: "SignalForge",
         exportedAt: new Date().toISOString(),
+        backend: {
+          analysisServiceUrl: "http://127.0.0.1:8765",
+          timeFrequencyBackend: "local-python-scipy"
+        },
         nodeCount: graph.nodes.length,
         edgeCount: graph.edges.length
       }

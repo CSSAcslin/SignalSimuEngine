@@ -7,6 +7,7 @@ export type TimeFrequencyBackendRequest = {
   sampleRate: number;
   values: number[];
   params: Record<string, ParamValue>;
+  inputNodeIds?: string[];
 };
 
 export type TimeFrequencyBackendResponse = {
@@ -35,7 +36,8 @@ export const createTimeFrequencyRequest = (node: OperationNode, signal: Signal):
   method: node.kind === "cwt" ? "CWT" : "STFT",
   sampleRate: signal.sampleRate,
   values: signal.values,
-  params: { ...node.params }
+  params: { ...node.params },
+  inputNodeIds: [signal.provenance?.nodeId ?? signal.id]
 });
 
 export const runTimeFrequencyBackend = async (request: TimeFrequencyBackendRequest): Promise<TimeFrequencyAnalysisResult | TimeFrequencyErrorResult> => {
@@ -61,7 +63,8 @@ export const runTimeFrequencyBackend = async (request: TimeFrequencyBackendReque
       method: request.method,
       status: "error",
       message: error instanceof Error ? error.message : String(error),
-      params: request.params
+      params: request.params,
+      provenance: requestProvenance(request)
     };
   }
 };
@@ -77,7 +80,8 @@ const runBrowserTimeFrequencyBackend = async (request: TimeFrequencyBackendReque
       method: request.method,
       status: "error",
       message: `Local analysis backend is offline. Start it with pnpm backend:dev, then keep using the web workspace. ${error instanceof Error ? error.message : String(error)}`,
-      params: request.params
+      params: request.params,
+      provenance: requestProvenance(request)
     };
   }
 };
@@ -104,5 +108,18 @@ const toTimeFrequencyResult = (request: TimeFrequencyBackendRequest, response: T
   frequency: response.frequency,
   power: response.power,
   unit: response.unit ?? "power",
-  params: request.params
+  params: request.params,
+  provenance: requestProvenance(request, response.unit ?? "power")
+});
+
+const requestProvenance = (request: TimeFrequencyBackendRequest, unit = "power") => ({
+  nodeId: request.nodeId,
+  nodeName: request.name,
+  nodeKind: request.method === "CWT" ? "cwt" as const : "stft" as const,
+  inputNodeIds: request.inputNodeIds ?? [],
+  params: { ...request.params },
+  sampleRate: request.sampleRate,
+  sampleCount: request.values.length,
+  unit,
+  backend: "local-python-scipy"
 });

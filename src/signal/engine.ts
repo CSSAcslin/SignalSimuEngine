@@ -14,6 +14,17 @@ const asNumber = (value: unknown, fallback: number) => (typeof value === "number
 
 const makeTime = (length: number, sampleRate: number) => Array.from({ length }, (_, index) => index / sampleRate);
 
+const nodeProvenance = (node: SignalNode, inputNodeIds: string[], sampleRate?: number, sampleCount?: number, unit?: string) => ({
+  nodeId: node.id,
+  nodeName: node.name,
+  nodeKind: node.kind,
+  inputNodeIds,
+  params: { ...node.params },
+  sampleRate,
+  sampleCount,
+  unit
+});
+
 const seededRandom = (seed = 1) => {
   let state = seed >>> 0;
   return () => {
@@ -31,7 +42,8 @@ const baseSignal = (node: SignalSourceNode, values: number[]): Signal => ({
   values,
   params: { ...node.params },
   seed: node.seed,
-  timelineOffset: node.timelineOffset
+  timelineOffset: node.timelineOffset,
+  provenance: nodeProvenance(node, [], node.sampleRate, values.length, "a.u.")
 });
 
 export const createSourceSignal = (node: Omit<SignalSourceNode, "type" | "position" | "timelineOffset"> & Partial<SignalSourceNode>): Signal => {
@@ -109,7 +121,8 @@ const cloneWithValues = (source: Signal, id: string, name: string, values: numbe
   time: makeTime(values.length, source.sampleRate),
   values,
   params: {},
-  timelineOffset: source.timelineOffset
+  timelineOffset: source.timelineOffset,
+  provenance: source.provenance
 });
 
 const placeOnGlobalGrid = (signal: Signal, sampleRate: number, samples: number): Signal => {
@@ -124,7 +137,10 @@ const placeOnGlobalGrid = (signal: Signal, sampleRate: number, samples: number):
     ...signal,
     sampleRate,
     time: makeTime(values.length, sampleRate),
-    values
+    values,
+    provenance: signal.provenance
+      ? { ...signal.provenance, sampleRate, sampleCount: values.length }
+      : signal.provenance
   };
 };
 
@@ -174,14 +190,15 @@ export const fftSpectrum = (signal: Signal): Spectrum => {
 
 const meanValue = (values: number[]) => (values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length);
 
-const scalarAnalysis = (node: OperationNode, label: string, value: number, unit: string): AnalysisResult => ({
+const scalarAnalysis = (node: OperationNode, inputs: Signal[], label: string, value: number, unit: string): AnalysisResult => ({
   type: "scalar",
   id: node.id,
   name: node.name,
   label,
   value,
   unit,
-  params: { ...node.params }
+  params: { ...node.params },
+  provenance: nodeProvenance(node, inputs.map((signal) => signal.provenance?.nodeId ?? signal.id), inputs[0]?.sampleRate, inputs[0]?.values.length, unit)
 });
 
 const spectralAnalysis = (node: OperationNode, signal: Signal): { spectrum: Spectrum; analysis: AnalysisResult } => {
@@ -195,7 +212,8 @@ const spectralAnalysis = (node: OperationNode, signal: Signal): { spectrum: Spec
       frequency: spectrum.frequency,
       magnitude: spectrum.magnitude,
       unit: signal.unit,
-      params: { ...node.params }
+      params: { ...node.params },
+      provenance: nodeProvenance(node, [signal.provenance?.nodeId ?? signal.id], signal.sampleRate, signal.values.length, signal.unit)
     }
   };
 };
@@ -223,52 +241,57 @@ const occupiedBandwidth = (signal: Signal, threshold: number) => {
 const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signal; spectrum?: Spectrum; analysis?: AnalysisResult; error?: string } => {
   const name = node.name;
   const kind = node.kind as OperationKind;
+  const inputNodeIds = inputs.map((signal) => signal.provenance?.nodeId ?? signal.id);
+  const withOperationProvenance = (signal: Signal) => ({
+    ...signal,
+    provenance: nodeProvenance(node, inputNodeIds, signal.sampleRate, signal.values.length, signal.unit)
+  });
 
   if (inputs.length === 0) return { error: "Operation has no input signals." };
 
   switch (kind) {
     case "add":
-      return { signal: cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs, (values) => values.reduce((sum, value) => sum + value, 0))) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs, (values) => values.reduce((sum, value) => sum + value, 0)))) };
     case "subtract":
       if (inputs.length < 2) return { error: "Subtract requires two inputs." };
-      return { signal: cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs.slice(0, 2), ([a, b]) => a - b)) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs.slice(0, 2), ([a, b]) => a - b))) };
     case "multiply":
-      return { signal: cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs, (values) => values.reduce((product, value) => product * value, 1))) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, sameLengthValues(inputs, (values) => values.reduce((product, value) => product * value, 1)))) };
     case "scale": {
       const gain = asNumber(node.params.gain, 1);
-      return { signal: cloneWithValues(inputs[0], node.id, name, inputs[0].values.map((value) => value * gain)) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, inputs[0].values.map((value) => value * gain))) };
     }
     case "delay": {
       const samples = Math.max(0, Math.floor(asNumber(node.params.samples, 0)));
-      return { signal: cloneWithValues(inputs[0], node.id, name, [...Array(samples).fill(0), ...inputs[0].values]) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, [...Array(samples).fill(0), ...inputs[0].values])) };
     }
     case "convolve":
       if (inputs.length < 2) return { error: "Convolution requires two inputs." };
-      return { signal: cloneWithValues(inputs[0], node.id, name, convolve(inputs[0].values, inputs[1].values)) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, convolve(inputs[0].values, inputs[1].values))) };
     case "correlate":
       if (inputs.length < 2) return { error: "Cross-correlation requires two inputs." };
-      return { signal: cloneWithValues(inputs[0], node.id, name, correlate(inputs[0].values, inputs[1].values)) };
+      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, correlate(inputs[0].values, inputs[1].values))) };
     case "fft":
       return spectralAnalysis(node, inputs[0]);
     case "normalize": {
       const normalized = normalizeSignal(inputs[0]);
-      return { signal: { ...normalized, id: node.id, name } };
+      return { signal: withOperationProvenance({ ...normalized, id: node.id, name }) };
     }
     case "rms":
-      return { analysis: scalarAnalysis(node, "RMS", Math.sqrt(meanValue(inputs[0].values.map((value) => value * value))), inputs[0].unit) };
+      return { analysis: scalarAnalysis(node, inputs, "RMS", Math.sqrt(meanValue(inputs[0].values.map((value) => value * value))), inputs[0].unit) };
     case "mean":
-      return { analysis: scalarAnalysis(node, "Mean", meanValue(inputs[0].values), inputs[0].unit) };
+      return { analysis: scalarAnalysis(node, inputs, "Mean", meanValue(inputs[0].values), inputs[0].unit) };
     case "peak":
-      return { analysis: scalarAnalysis(node, "Peak", Math.max(...inputs[0].values.map((value) => Math.abs(value)), 0), inputs[0].unit) };
+      return { analysis: scalarAnalysis(node, inputs, "Peak", Math.max(...inputs[0].values.map((value) => Math.abs(value)), 0), inputs[0].unit) };
     case "snr": {
       const signalPower = meanValue(inputs[0].values.map((value) => value * value));
       const noiseFloor = Math.max(asNumber(node.params.noiseFloor, 0.1), 1e-12);
-      return { analysis: scalarAnalysis(node, "SNR", 10 * Math.log10(Math.max(signalPower, 1e-24) / (noiseFloor * noiseFloor)), "dB") };
+      return { analysis: scalarAnalysis(node, inputs, "SNR", 10 * Math.log10(Math.max(signalPower, 1e-24) / (noiseFloor * noiseFloor)), "dB") };
     }
     case "dominantFrequency":
-      return { analysis: scalarAnalysis(node, "Dominant Frequency", dominantFrequency(inputs[0]), "Hz") };
+      return { analysis: scalarAnalysis(node, inputs, "Dominant Frequency", dominantFrequency(inputs[0]), "Hz") };
     case "bandwidth":
-      return { analysis: scalarAnalysis(node, "Bandwidth", occupiedBandwidth(inputs[0], asNumber(node.params.threshold, 0.5)), "Hz") };
+      return { analysis: scalarAnalysis(node, inputs, "Bandwidth", occupiedBandwidth(inputs[0], asNumber(node.params.threshold, 0.5)), "Hz") };
     case "stft":
       return {
         analysis: {
@@ -278,7 +301,8 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
           method: "STFT",
           status: "pending",
           message: "Python/SciPy backend required.",
-          params: { ...node.params }
+          params: { ...node.params },
+          provenance: { ...nodeProvenance(node, inputNodeIds, inputs[0].sampleRate, inputs[0].values.length, inputs[0].unit), backend: "local-python-scipy" }
         }
       };
     case "cwt":
@@ -290,7 +314,8 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
           method: "CWT",
           status: "pending",
           message: "Python/SciPy backend required.",
-          params: { ...node.params }
+          params: { ...node.params },
+          provenance: { ...nodeProvenance(node, inputNodeIds, inputs[0].sampleRate, inputs[0].values.length, inputs[0].unit), backend: "local-python-scipy" }
         }
       };
     default:

@@ -17,4 +17,11 @@ describe("CSV signal import", () => {
     expect(imported.sampleRate).toBe(500);
     expect(imported.startTime).toBe(0.1);
   });
+
+  it("ignores SignalForge CSV metadata comments", () => {
+    const imported = parseCsvSignalData("# SignalForge signal export\n# sampleRate=2\ntime,value\n0,1\n0.5,-1\n", 1000);
+
+    expect(imported.values).toEqual([1, -1]);
+    expect(imported.sampleRate).toBe(2);
+  });
 });

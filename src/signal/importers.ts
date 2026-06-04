@@ -22,7 +22,7 @@ export const parseCsvSignalData = (text: string, fallbackSampleRate = 1000): Imp
   const rows = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
     .map(splitCsvLine);
 
   if (rows.length === 0) throw new Error("CSV file is empty.");

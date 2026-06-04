@@ -527,6 +527,30 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
   );
 };
 
+const ProvenanceBox = ({ provenance }: { provenance?: Signal["provenance"] }) => {
+  if (!provenance) return null;
+  return (
+    <div className="provenance-box">
+      <div className="provenance-title">
+        <GitBranch size={14} />
+        <span>Provenance</span>
+      </div>
+      <dl>
+        <dt>Node</dt>
+        <dd>{provenance.nodeName} / {provenance.nodeKind}</dd>
+        <dt>Inputs</dt>
+        <dd>{provenance.inputNodeIds.length > 0 ? provenance.inputNodeIds.join(", ") : "None"}</dd>
+        <dt>Samples</dt>
+        <dd>{provenance.sampleCount?.toLocaleString() ?? "-"}</dd>
+        <dt>Rate</dt>
+        <dd>{provenance.sampleRate ? `${provenance.sampleRate.toLocaleString()} Hz` : "-"}</dd>
+        <dt>Backend</dt>
+        <dd>{provenance.backend ?? "TypeScript core"}</dd>
+      </dl>
+    </div>
+  );
+};
+
 const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => void }) => {
   const sources = moduleDefinitions.filter((definition) => definition.type === "source");
   const operations = moduleDefinitions.filter((definition) => definition.type === "operation");
@@ -1155,6 +1179,7 @@ const Inspector = ({
   const minSourceDuration = Math.max(1 / sampleRate, 0.000001);
   const maxSourceDuration = Math.max(minSourceDuration, totalDuration - sourceStart);
   const outputLabel = signal ? "Signal" : analysis ? (analysis.type === "scalar" ? "Scalar analysis" : analysis.type === "spectrum" ? "Spectrum analysis" : "Time-frequency analysis") : "Unavailable";
+  const provenance = analysis?.provenance ?? signal?.provenance;
 
   return (
     <aside className="inspector">
@@ -1251,6 +1276,7 @@ const Inspector = ({
             </dl>
           </div>
           {analysis ? <InspectorAnalysisResult analysis={analysis} /> : null}
+          <ProvenanceBox provenance={provenance} />
         </>
       )}
       <div className="export-stack">
@@ -1427,7 +1453,18 @@ export const App = () => {
           method: request.method,
           status: "running",
           message: "Running Python/SciPy backend...",
-          params: { ...node.params }
+          params: { ...node.params },
+          provenance: {
+            nodeId: node.id,
+            nodeName: node.name,
+            nodeKind: node.kind,
+            inputNodeIds: request.inputNodeIds ?? [],
+            params: { ...node.params },
+            sampleRate: inputSignal.sampleRate,
+            sampleCount: inputSignal.values.length,
+            unit: "power",
+            backend: "local-python-scipy"
+          }
         }
       }));
       void runTimeFrequencyBackend(request).then((result) => {
@@ -1705,7 +1742,6 @@ export const App = () => {
             <em>s</em>
           </label>
         </div>
-        <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length} />
         <div className="toolbar">
           <input
             ref={csvInputRef}
@@ -1757,9 +1793,12 @@ export const App = () => {
               <h1>Node Canvas</h1>
               <p className="canvas-shortcuts">Left-drag pans. Shift-drag box selects. Shift+scroll zooms. Ctrl+Z/Y undo/redo. Delete removes selection.</p>
             </div>
-            <div className="status-chip">
-              <Sparkles size={14} />
-              {evaluation.errors.size === 0 ? `DAG valid · ${selectedNodeIds.length} selected` : `${evaluation.errors.size} error(s) · ${selectedNodeIds.length} selected`}
+            <div className="canvas-status-group">
+              <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length} />
+              <div className="status-chip">
+                <Sparkles size={14} />
+                {evaluation.errors.size === 0 ? `DAG valid / ${selectedNodeIds.length} selected` : `${evaluation.errors.size} error(s) / ${selectedNodeIds.length} selected`}
+              </div>
             </div>
           </div>
           <NodeCanvas

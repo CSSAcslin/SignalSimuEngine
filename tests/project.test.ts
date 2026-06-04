@@ -39,7 +39,10 @@ describe("project JSON migration", () => {
     const serialized = JSON.parse(serializeProjectGraph(graph));
 
     expect(serialized.schemaVersion).toBe(2);
+    expect(serialized.protocol.name).toBe("SignalForge 1D Signal Protocol");
+    expect(serialized.protocol.version).toBe(3);
     expect(serialized.metadata.app).toBe("SignalForge");
+    expect(serialized.metadata.backend.analysisServiceUrl).toBe("http://127.0.0.1:8765");
     expect(serialized.metadata.nodeCount).toBe(1);
   });
 });

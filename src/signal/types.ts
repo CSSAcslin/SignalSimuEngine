@@ -54,6 +54,20 @@ export type Signal = {
   params: Record<string, ParamValue>;
   seed?: number;
   timelineOffset?: number;
+  provenance?: ResultProvenance;
+};
+
+export type ResultProvenance = {
+  nodeId: string;
+  nodeName: string;
+  nodeKind: NodeKind;
+  inputNodeIds: string[];
+  params: Record<string, ParamValue>;
+  sampleRate?: number;
+  sampleCount?: number;
+  unit?: string;
+  backend?: string;
+  warnings?: string[];
 };
 
 export type Spectrum = {
@@ -69,6 +83,7 @@ export type ScalarAnalysisResult = {
   value: number;
   unit: string;
   params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
 };
 
 export type SpectrumAnalysisResult = {
@@ -79,6 +94,7 @@ export type SpectrumAnalysisResult = {
   magnitude: number[];
   unit: string;
   params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
 };
 
 export type TimeFrequencyPendingResult = {
@@ -89,6 +105,7 @@ export type TimeFrequencyPendingResult = {
   status: "pending" | "running";
   message: string;
   params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
 };
 
 export type TimeFrequencyAnalysisResult = {
@@ -102,6 +119,7 @@ export type TimeFrequencyAnalysisResult = {
   power: number[][];
   unit: string;
   params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
 };
 
 export type TimeFrequencyErrorResult = {
@@ -112,6 +130,7 @@ export type TimeFrequencyErrorResult = {
   status: "error";
   message: string;
   params: Record<string, ParamValue>;
+  provenance?: ResultProvenance;
 };
 
 export type AnalysisResult = ScalarAnalysisResult | SpectrumAnalysisResult | TimeFrequencyPendingResult | TimeFrequencyAnalysisResult | TimeFrequencyErrorResult;
