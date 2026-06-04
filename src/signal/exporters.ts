@@ -8,7 +8,7 @@ export const exportCsv = (signal: Signal) => {
   return `${rows.join("\n")}\n`;
 };
 
-export const exportAnalysisCsv = (analysis: AnalysisResult) => {
+export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "matrix" = "long") => {
   if (analysis.type === "scalar") {
     return `label,value,unit\n${analysis.label},${analysis.value},${analysis.unit}\n`;
   }
@@ -22,6 +22,13 @@ export const exportAnalysisCsv = (analysis: AnalysisResult) => {
   }
 
   if (analysis.type === "time-frequency") {
+    if (format === "matrix") {
+      const rows = [`frequency\\time,${analysis.time.join(",")}`];
+      analysis.frequency.forEach((frequency, rowIndex) => {
+        rows.push(`${frequency},${analysis.time.map((_, columnIndex) => analysis.power[rowIndex]?.[columnIndex] ?? 0).join(",")}`);
+      });
+      return `${rows.join("\n")}\n`;
+    }
     const rows = ["frequency,time,power"];
     analysis.frequency.forEach((frequency, rowIndex) => {
       analysis.time.forEach((time, columnIndex) => {

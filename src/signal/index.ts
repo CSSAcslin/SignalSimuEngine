@@ -1,4 +1,6 @@
 export * from "./analysisSummary";
+export * from "./analysisBackendStatus";
+export * from "./analysisView";
 export * from "./engine";
 export * from "./exporters";
 export * from "./graphEditing";

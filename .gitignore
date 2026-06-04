@@ -6,3 +6,5 @@ dist-ssr/
 .vite/
 src-tauri/target/
 *.log
+__pycache__/
+*.pyc

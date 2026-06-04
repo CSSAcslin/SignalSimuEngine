@@ -44,6 +44,7 @@ import {
   clampView,
   connectGraphNodes,
   createTimeTicks,
+  createTimeFrequencyView,
   createValueTicks,
   decibels,
   duplicateGraphNode,
@@ -63,6 +64,7 @@ import {
   parseCsvSignalData,
   parseProjectJson,
   readSignalAtTime,
+  checkAnalysisBackendStatus,
   removeGraphEdge,
   removeGraphNode,
   removeGraphNodes,
@@ -75,6 +77,7 @@ import {
   snapTimeToSample,
   summarizeAnalysisResult,
   serializeProjectGraph,
+  type AnalysisBackendStatus,
   type ModuleDefinition,
   type OperationKind,
   type ParamValue,
@@ -429,25 +432,35 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
   }
 
   if (analysis.type === "time-frequency") {
-    const flat = analysis.power.flat();
-    const max = Math.max(...flat, 1e-12);
-    const rows = analysis.power.slice(0, 48);
-    const columns = Math.max(...rows.map((row) => row.length), 1);
+    const view = createTimeFrequencyView(analysis, { maxRows: 52, maxColumns: 110 });
+    const columns = Math.max(...view.cells.map((cell) => cell.column + 1), 1);
     return (
       <div className="time-frequency-panel">
-        <div className="time-frequency-grid" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
-          {rows.flatMap((row, rowIndex) =>
-            row.map((value, columnIndex) => (
+        <div className="time-frequency-readout">
+          <span>{analysis.method}</span>
+          <strong>{view.rowCount} x {view.columnCount}</strong>
+          <em>Peak {formatValue(view.peak.value)} {analysis.unit} @ {formatValue(view.peak.frequency)} Hz, {formatValue(view.peak.time)} s</em>
+        </div>
+        <div className="time-frequency-chart">
+          <div className="tf-y-axis">
+            <span>{view.yLabels[1]}</span>
+            <span>{view.yLabels[0]}</span>
+          </div>
+          <div className="time-frequency-grid" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+            {view.cells.map((cell) => (
               <span
-                key={`${rowIndex}-${columnIndex}`}
-                title={`${analysis.frequency[rowIndex]?.toFixed(3) ?? "-"} Hz, ${analysis.time[columnIndex]?.toFixed(3) ?? "-"} s, ${formatValue(value)}`}
-                style={{ opacity: 0.22 + 0.78 * (value / max) }}
+                key={`${cell.row}-${cell.column}`}
+                title={`${cell.frequency.toFixed(3)} Hz, ${cell.time.toFixed(3)} s, ${formatValue(cell.value)} ${analysis.unit}`}
+                style={{ opacity: 0.18 + 0.82 * cell.intensity }}
               />
-            ))
-          )}
+            ))}
+          </div>
+          <div className="tf-x-axis">
+            {view.xLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+          </div>
         </div>
         <div className="chart-legend spectrum-peak">
-          <span><i />{analysis.method}: {analysis.frequency.length} x {analysis.time.length} time-frequency matrix</span>
+          <span><i />Intensity is downsampled for preview; exports keep full-resolution {analysis.unit} values.</span>
         </div>
       </div>
     );
@@ -467,6 +480,7 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
           return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
         })
       : [];
+  const timeFrequencyView = analysis.type === "time-frequency" ? createTimeFrequencyView(analysis, { maxRows: 12, maxColumns: 32 }) : undefined;
 
   return (
     <div className={`inspector-analysis ${summary.kind}`}>
@@ -483,6 +497,17 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
         <svg className="analysis-mini-spectrum" viewBox="0 0 100 30" preserveAspectRatio="none" aria-label={`${analysis.name} spectrum preview`}>
           <path d={spectrumPoints.join(" ")} />
         </svg>
+      ) : null}
+      {timeFrequencyView ? (
+        <div className="analysis-mini-heatmap" style={{ gridTemplateColumns: `repeat(${Math.max(...timeFrequencyView.cells.map((cell) => cell.column + 1), 1)}, 1fr)` }}>
+          {timeFrequencyView.cells.map((cell) => (
+            <span
+              key={`${cell.row}-${cell.column}`}
+              title={`${cell.frequency.toFixed(3)} Hz, ${cell.time.toFixed(3)} s, ${formatValue(cell.value)}`}
+              style={{ opacity: 0.18 + 0.82 * cell.intensity }}
+            />
+          ))}
+        </div>
       ) : null}
       {analysis.type === "time-frequency-pending" ? (
         <div className="analysis-backend-note">
@@ -1123,7 +1148,7 @@ const Inspector = ({
   totalDuration: number;
   onChangeNode: (node: SignalNode) => void;
   onExportNodeSignal: (format: "csv" | "npy") => void;
-  onExportNodeAnalysis: (format: "csv" | "json") => void;
+  onExportNodeAnalysis: (format: "csv" | "matrix-csv" | "json") => void;
 }) => {
   const definition = node ? getModuleDefinition(node.kind) : undefined;
   const sourceStart = node?.type === "source" ? clampNumber(node.timelineOffset, 0, totalDuration, 0) : 0;
@@ -1232,10 +1257,23 @@ const Inspector = ({
         <div className="export-stack-title">Selected Node Output</div>
         {analysis ? (
           <>
-            <button onClick={() => onExportNodeAnalysis("csv")} title={`Export ${analysis.name} analysis as CSV`}>
-              <ArrowDownToLine size={15} />
-              Analysis CSV
-            </button>
+            {analysis.type === "time-frequency" ? (
+              <>
+                <button onClick={() => onExportNodeAnalysis("matrix-csv")} title={`Export ${analysis.name} as a frequency-by-time matrix CSV`}>
+                  <ArrowDownToLine size={15} />
+                  Matrix CSV
+                </button>
+                <button onClick={() => onExportNodeAnalysis("csv")} title={`Export ${analysis.name} as long-form frequency/time/power CSV`}>
+                  <ArrowDownToLine size={15} />
+                  Long CSV
+                </button>
+              </>
+            ) : (
+              <button onClick={() => onExportNodeAnalysis("csv")} title={`Export ${analysis.name} analysis as CSV`}>
+                <ArrowDownToLine size={15} />
+                Analysis CSV
+              </button>
+            )}
             <button onClick={() => onExportNodeAnalysis("json")} title={`Export ${analysis.name} analysis as JSON`}>
               <FileJson size={15} />
               Analysis JSON
@@ -1255,6 +1293,17 @@ const Inspector = ({
         )}
       </div>
     </aside>
+  );
+};
+
+const BackendStatusChip = ({ status, runningCount }: { status: AnalysisBackendStatus; runningCount: number }) => {
+  const isRunning = runningCount > 0;
+  const label = isRunning ? `Running ${runningCount}` : status.status === "online" ? "Backend Online" : "Backend Offline";
+  return (
+    <div className={`backend-status ${isRunning ? "running" : status.status}`} title={status.message}>
+      {isRunning ? <span className="spinner tiny" /> : <Database size={14} />}
+      <span>{label}</span>
+    </div>
   );
 };
 
@@ -1278,6 +1327,10 @@ export const App = () => {
   const [undoStack, setUndoStack] = useState<SignalGraph[]>([]);
   const [redoStack, setRedoStack] = useState<SignalGraph[]>([]);
   const [csvImportMessage, setCsvImportMessage] = useState<string>();
+  const [analysisBackendStatus, setAnalysisBackendStatus] = useState<AnalysisBackendStatus>({
+    status: "offline",
+    message: "Checking local analysis backend..."
+  });
   const [timeFrequencyResults, setTimeFrequencyResults] = useState<Record<string, AnalysisResult>>({});
   const [timeFrequencyRunningIds, setTimeFrequencyRunningIds] = useState<string[]>([]);
   const selectedNodeId = selectedNodeIds[selectedNodeIds.length - 1] ?? graph.selectedNodeId;
@@ -1335,6 +1388,21 @@ export const App = () => {
     setTimeFrequencyResults({});
     setTimeFrequencyRunningIds([]);
   }, [graph.nodes, graph.edges, graph.sampleRate, graph.samples]);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      void checkAnalysisBackendStatus().then((status) => {
+        if (active) setAnalysisBackendStatus(status);
+      });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 8000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const targetIds = Array.from(new Set([selectedNodeId, displayNodeId].filter((id): id is string => Boolean(id))));
@@ -1546,9 +1614,10 @@ export const App = () => {
     else downloadBlob(`${selectedSignal.name}.npy`, exportNpyFloat64(selectedSignal));
   };
 
-  const exportSelectedNodeAnalysis = (format: "csv" | "json") => {
+  const exportSelectedNodeAnalysis = (format: "csv" | "matrix-csv" | "json") => {
     if (!selectedAnalysis) return;
-    if (format === "csv") downloadText(`${selectedAnalysis.name}.csv`, exportAnalysisCsv(selectedAnalysis), "text/csv");
+    if (format === "matrix-csv") downloadText(`${selectedAnalysis.name}-matrix.csv`, exportAnalysisCsv(selectedAnalysis, "matrix"), "text/csv");
+    else if (format === "csv") downloadText(`${selectedAnalysis.name}.csv`, exportAnalysisCsv(selectedAnalysis), "text/csv");
     else downloadText(`${selectedAnalysis.name}.json`, exportAnalysisJson(selectedAnalysis), "application/json");
   };
 
@@ -1636,6 +1705,7 @@ export const App = () => {
             <em>s</em>
           </label>
         </div>
+        <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length} />
         <div className="toolbar">
           <input
             ref={csvInputRef}

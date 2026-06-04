@@ -8,6 +8,7 @@ import {
   exportAnalysisJson,
   exportPython,
   normalizeSignal,
+  type AnalysisResult,
   type SignalGraph
 } from "../src/signal";
 
@@ -388,7 +389,7 @@ describe("exports", () => {
   });
 
   it("exports time-frequency matrices as long-form CSV", () => {
-    const csv = exportAnalysisCsv({
+    const analysis: AnalysisResult = {
       type: "time-frequency",
       id: "stft",
       name: "STFT",
@@ -402,9 +403,11 @@ describe("exports", () => {
       ],
       unit: "power",
       params: {}
-    });
+    };
+    const csv = exportAnalysisCsv(analysis);
 
     expect(csv.trim()).toBe("frequency,time,power\n10,0,1\n10,0.5,2\n20,0,3\n20,0.5,4");
+    expect(exportAnalysisCsv(analysis, "matrix").trim()).toBe("frequency\\time,0,0.5\n10,1,2\n20,3,4");
   });
 
   it("exports a Python script that reconstructs source nodes and operations", () => {

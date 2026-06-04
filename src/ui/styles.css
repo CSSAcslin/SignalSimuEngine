@@ -77,7 +77,8 @@ button {
 .toolbar,
 .panel-title,
 .section-heading,
-.status-chip {
+.status-chip,
+.backend-status {
   display: flex;
   align-items: center;
 }
@@ -111,6 +112,40 @@ button {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.backend-status {
+  position: absolute;
+  left: 18px;
+  bottom: -24px;
+  z-index: 20;
+  gap: 7px;
+  border: 1px solid #cbdce6;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #f8fbfd;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.backend-status.online {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.backend-status.offline {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.backend-status.running {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .global-settings {
@@ -1199,8 +1234,59 @@ button {
   margin-top: 8px;
 }
 
+.time-frequency-readout {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  border: 1px solid #dbe7ee;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.time-frequency-readout span {
+  color: #7e22ce;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.time-frequency-readout strong {
+  color: #0f172a;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 16px;
+}
+
+.time-frequency-readout em {
+  min-width: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-frequency-chart {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  grid-template-rows: 188px 20px;
+  gap: 5px 8px;
+}
+
+.tf-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #64748b;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  text-align: right;
+}
+
 .time-frequency-grid {
-  height: 188px;
   display: grid;
   align-items: stretch;
   gap: 1px;
@@ -1216,6 +1302,15 @@ button {
   min-height: 2px;
   border-radius: 1px;
   background: linear-gradient(180deg, #fef3c7, #a855f7 55%, #0ea5e9);
+}
+
+.tf-x-axis {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
 }
 
 .spinner {
@@ -1633,6 +1728,24 @@ button {
   stroke: #9333ea;
   stroke-width: 1.7;
   vector-effect: non-scaling-stroke;
+}
+
+.analysis-mini-heatmap {
+  height: 38px;
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #e9d5ff;
+  border-radius: 6px;
+  padding: 3px;
+  background: #1e1b4b;
+}
+
+.analysis-mini-heatmap span {
+  min-width: 2px;
+  min-height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #fef3c7, #a855f7 55%, #38bdf8);
 }
 
 .analysis-backend-note {
