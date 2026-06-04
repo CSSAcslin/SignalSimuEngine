@@ -14,6 +14,74 @@ const asNumber = (value: unknown, fallback: number) => (typeof value === "number
 
 const makeTime = (length: number, sampleRate: number) => Array.from({ length }, (_, index) => index / sampleRate);
 
+const expressionSymbols = {
+  pi: Math.PI,
+  e: Math.E,
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  exp: Math.exp,
+  log: Math.log,
+  sqrt: Math.sqrt,
+  abs: Math.abs,
+  min: Math.min,
+  max: Math.max,
+  pow: Math.pow,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  round: Math.round
+};
+
+const expressionVariableNames = ["t", "n", "x", "sampleRate", "p0", "p1", "p2"] as const;
+const expressionSymbolNames = Object.keys(expressionSymbols);
+const allowedExpressionNames = new Set([...expressionVariableNames, ...expressionSymbolNames]);
+const expressionNamePattern = /[A-Za-z_][A-Za-z0-9_]*/g;
+const expressionCharacterPattern = /^[0-9A-Za-z_+\-*/%^().,\s]+$/;
+
+type ExpressionVariables = Partial<Record<(typeof expressionVariableNames)[number], number>>;
+type ExpressionFunction = (...args: Array<number | ((...args: number[]) => number)>) => unknown;
+type CompiledExpression = { fn: ExpressionFunction; error?: never } | { fn?: never; error: string };
+
+const expressionText = (params: Record<string, unknown>, fallback: string) => (typeof params.expression === "string" ? params.expression : fallback);
+
+const compileExpression = (expression: string): CompiledExpression => {
+  const normalizedExpression = expression.trim().replaceAll("^", "**");
+  if (normalizedExpression.length === 0) return { error: "Expression cannot be empty." };
+  if (!expressionCharacterPattern.test(normalizedExpression)) return { error: "Expression contains unsupported characters." };
+
+  const identifiers = normalizedExpression.match(expressionNamePattern) ?? [];
+  const unknownIdentifier = identifiers.find((identifier) => !allowedExpressionNames.has(identifier));
+  if (unknownIdentifier) return { error: `Unknown expression symbol: ${unknownIdentifier}` };
+
+  try {
+    const argumentNames = [...expressionVariableNames, ...expressionSymbolNames];
+    const fn = new Function(...argumentNames, `"use strict"; return (${normalizedExpression});`) as ExpressionFunction;
+    return { fn };
+  } catch {
+    return { error: "Expression syntax is invalid." };
+  }
+};
+
+const evaluateExpressionValue = (
+  compiled: CompiledExpression,
+  variables: ExpressionVariables
+): { value: number; warning?: string } => {
+  if (!compiled.fn) return { value: 0, warning: compiled.error };
+  try {
+    const variableValues = expressionVariableNames.map((name) => variables[name] ?? 0);
+    const symbolValues = expressionSymbolNames.map((name) => expressionSymbols[name as keyof typeof expressionSymbols]);
+    const result = compiled.fn(...variableValues, ...symbolValues);
+    const value = Number(result);
+    if (!Number.isFinite(value)) return { value: 0, warning: "Expression produced a non-finite value." };
+    return { value };
+  } catch {
+    return { value: 0, warning: "Expression evaluation failed." };
+  }
+};
+
 const nodeProvenance = (node: SignalNode, inputNodeIds: string[], sampleRate?: number, sampleCount?: number, unit?: string) => ({
   nodeId: node.id,
   nodeName: node.name,
@@ -75,6 +143,25 @@ export const createSourceSignal = (node: Omit<SignalSourceNode, "type" | "positi
       sourceNode,
       Array.from({ length }, () => (random() * 2 - 1) * amplitude)
     );
+  }
+
+  if (node.kind === "customSource") {
+    const expression = expressionText(params, "p0 * sin(2*pi*p1*t + p2)");
+    const compiled = compileExpression(expression);
+    const p0 = asNumber(params.p0, 1);
+    const p1 = asNumber(params.p1, 5);
+    const p2 = asNumber(params.p2, 0);
+    const warnings = new Set<string>();
+    const values = makeTime(length, sampleRate).map((time, index) => {
+      const result = evaluateExpressionValue(compiled, { t: time, n: index, sampleRate, p0, p1, p2 });
+      if (result.warning) warnings.add(result.warning);
+      return result.value;
+    });
+    const signal = baseSignal(sourceNode, values);
+    return {
+      ...signal,
+      provenance: signal.provenance ? { ...signal.provenance, warnings: [...warnings] } : signal.provenance
+    };
   }
 
   const values = makeTime(length, sampleRate).map((time) => {
@@ -317,6 +404,28 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
     case "scale": {
       const gain = asNumber(node.params.gain, 1);
       return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, inputs[0].values.map((value) => value * gain))) };
+    }
+    case "customUnary": {
+      const input = inputs[0];
+      const expression = expressionText(node.params, "p0 * x + p1");
+      const compiled = compileExpression(expression);
+      const p0 = asNumber(node.params.p0, 1);
+      const p1 = asNumber(node.params.p1, 0);
+      const p2 = asNumber(node.params.p2, 0);
+      if (!compiled.fn) return { error: compiled.error };
+      const warnings = new Set<string>();
+      const values = input.values.map((value, index) => {
+        const result = evaluateExpressionValue(compiled, { x: value, t: input.time[index] ?? index / input.sampleRate, n: index, sampleRate: input.sampleRate, p0, p1, p2 });
+        if (result.warning) warnings.add(result.warning);
+        return result.value;
+      });
+      const signal = withOperationProvenance(cloneWithValues(input, node.id, name, values));
+      return {
+        signal: {
+          ...signal,
+          provenance: signal.provenance ? { ...signal.provenance, warnings: [...warnings] } : signal.provenance
+        }
+      };
     }
     case "delay": {
       const samples = Math.max(0, Math.floor(asNumber(node.params.samples, 0)));

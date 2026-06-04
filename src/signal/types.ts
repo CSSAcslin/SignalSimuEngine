@@ -7,7 +7,8 @@ export type SourceKind =
   | "chirp"
   | "noise"
   | "constant"
-  | "import";
+  | "import"
+  | "customSource";
 
 export type OperationKind =
   | "add"
@@ -24,6 +25,7 @@ export type OperationKind =
   | "peak"
   | "quantiles"
   | "distribution"
+  | "customUnary"
   | "snr"
   | "dominantFrequency"
   | "bandwidth"

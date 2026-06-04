@@ -64,6 +64,20 @@ describe("signal sources", () => {
     expect(pulse.values[2]).toBeCloseTo(2);
     expect(pulse.values[0]).toBeLessThan(pulse.values[2]);
   });
+
+  it("generates custom expression source signals from safe math variables", () => {
+    const signal = createSourceSignal({
+      id: "custom",
+      kind: "customSource",
+      name: "Custom Source",
+      sampleRate: 4,
+      length: 4,
+      params: { expression: "p0 * sin(2*pi*p1*t)", p0: 2, p1: 1, p2: 0 }
+    });
+
+    expect(signal.values.map((value) => Number(value.toFixed(6)))).toEqual([0, 2, 0, -2]);
+    expect(signal.provenance?.warnings).toEqual([]);
+  });
 });
 
 describe("operation modules", () => {
@@ -258,6 +272,20 @@ describe("operation modules", () => {
 
     expect(result.signals.get("conv")?.values).toEqual([1, 3, 5, 3]);
     expect(result.signals.get("corr")?.values).toEqual([1, 3, 5, 3]);
+  });
+
+  it("applies custom unary expression operations to each input sample", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 3, params: { values: [1, 2, 3] } },
+        { id: "custom", type: "operation", kind: "customUnary", name: "Custom Unary", position: { x: 0, y: 0 }, timelineOffset: 0, params: { expression: "p0 * x + p1", p0: 2, p1: -1, p2: 0 } }
+      ],
+      edges: [{ id: "x-custom", from: "x", to: "custom" }]
+    };
+
+    const signal = evaluateGraph(graph).signals.get("custom");
+
+    expect(signal?.values).toEqual([1, 3, 5]);
   });
 
   it("normalizes a signal without mutating the original values", () => {

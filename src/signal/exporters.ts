@@ -112,10 +112,10 @@ const sourceLine = (node: SignalNode) => {
   return `nodes['${node.id}'] = ${base}`;
 };
 
-const operationLine = (node: SignalNode, inputs: string[]) => {
+const operationLine = (node: SignalNode, inputs: string[], sampleRate: number) => {
   if (node.type !== "operation") return "";
   const inputExpr = `[${inputs.map((id) => `nodes['${id}']`).join(", ")}]`;
-  return `nodes['${node.id}'] = apply_operation('${node.kind}', ${inputExpr}, ${pyParams(node)})`;
+  return `nodes['${node.id}'] = apply_operation('${node.kind}', ${inputExpr}, {**${pyParams(node)}, '__sampleRate': ${sampleRate}})`;
 };
 
 export const exportPython = (graph: SignalGraph) => {
@@ -125,8 +125,21 @@ export const exportPython = (graph: SignalGraph) => {
     "# Time-frequency nodes require SciPy-compatible execution.",
     "import numpy as np",
     "",
+    "def safe_expression(expr, scope):",
+    "    allowed = {",
+    "        'np': np, 'pi': np.pi, 'e': np.e,",
+    "        'sin': np.sin, 'cos': np.cos, 'tan': np.tan,",
+    "        'asin': np.arcsin, 'acos': np.arccos, 'atan': np.arctan,",
+    "        'exp': np.exp, 'log': np.log, 'sqrt': np.sqrt, 'abs': np.abs,",
+    "        'min': np.minimum, 'max': np.maximum, 'pow': np.power,",
+    "        'floor': np.floor, 'ceil': np.ceil, 'round': np.round",
+    "    }",
+    "    allowed.update(scope)",
+    "    return eval(str(expr).replace('^', '**'), {'__builtins__': {}}, allowed)",
+    "",
     "def make_source(kind, sample_rate, length, params, seed=None):",
     "    t = np.arange(length) / sample_rate",
+    "    n = np.arange(length)",
     "    amp = params.get('amplitude', 1)",
     "    freq = params.get('frequency', 1)",
     "    phase = params.get('phase', 0)",
@@ -146,6 +159,11 @@ export const exportPython = (graph: SignalGraph) => {
     "        return rng.uniform(-amp, amp, length)",
     "    if kind == 'constant': return np.full(length, params.get('value', 1))",
     "    if kind == 'import': return np.array(params.get('values', [0]), dtype=float)",
+    "    if kind == 'customSource':",
+    "        return np.asarray(safe_expression(params.get('expression', 'p0 * sin(2*pi*p1*t + p2)'), {",
+    "            't': t, 'n': n, 'sampleRate': sample_rate,",
+    "            'p0': params.get('p0', 1), 'p1': params.get('p1', 5), 'p2': params.get('p2', 0)",
+    "        }), dtype=float)",
     "    return np.zeros(length)",
     "",
     "def align(inputs):",
@@ -159,6 +177,14 @@ export const exportPython = (graph: SignalGraph) => {
     "        return a - b",
     "    if kind == 'multiply': return np.prod(np.vstack(align(inputs)), axis=0)",
     "    if kind == 'scale': return inputs[0] * params.get('gain', 1)",
+    "    if kind == 'customUnary':",
+    "        x = inputs[0]",
+    "        sample_rate = params.get('__sampleRate', params.get('sampleRate', 1))",
+    "        t = np.arange(len(x)) / sample_rate",
+    "        return np.asarray(safe_expression(params.get('expression', 'p0 * x + p1'), {",
+    "            'x': x, 't': t, 'n': np.arange(len(x)), 'sampleRate': sample_rate,",
+    "            'p0': params.get('p0', 1), 'p1': params.get('p1', 0), 'p2': params.get('p2', 0)",
+    "        }), dtype=float)",
     "    if kind == 'delay': return np.concatenate([np.zeros(int(params.get('samples', 0))), inputs[0]])",
     "    if kind == 'convolve': return np.convolve(inputs[0], inputs[1], mode='full')",
     "    if kind == 'correlate': return np.correlate(inputs[0], inputs[1], mode='full')",
@@ -200,7 +226,7 @@ export const exportPython = (graph: SignalGraph) => {
     if (node.type === "source") lines.push(sourceLine(node));
     else {
       const inputs = graph.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from);
-      lines.push(operationLine(node, inputs));
+      lines.push(operationLine(node, inputs, graph.sampleRate ?? 1));
     }
   });
 

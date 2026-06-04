@@ -19,4 +19,14 @@ describe("module definitions", () => {
     expect(moduleDefinitions.some((definition) => definition.kind === "mean")).toBe(false);
     expect(moduleDefinitions.some((definition) => definition.kind === "peak")).toBe(false);
   });
+
+  it("declares safe custom expression module templates", () => {
+    const customSource = moduleDefinitions.find((definition) => definition.kind === "customSource");
+    const customUnary = moduleDefinitions.find((definition) => definition.kind === "customUnary");
+
+    expect(customSource).toMatchObject({ type: "source", label: "Custom Source", inputCount: 0 });
+    expect(customUnary).toMatchObject({ type: "operation", label: "Custom Unary", inputCount: 1 });
+    expect(customSource?.params.some((param) => param.key === "expression" && param.type === "text")).toBe(true);
+    expect(customUnary?.params.some((param) => param.key === "expression" && param.type === "text")).toBe(true);
+  });
 });

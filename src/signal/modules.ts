@@ -97,6 +97,19 @@ export const moduleDefinitions: ModuleDefinition[] = [
     params: [{ key: "values", label: "Values", type: "array", defaultValue: [1, 0, -1, 0] }]
   },
   {
+    kind: "customSource",
+    type: "source",
+    label: "Custom Source",
+    description: "Safe expression source using t, n, sampleRate, and p0/p1/p2.",
+    inputCount: 0,
+    params: [
+      { key: "expression", label: "Expression", type: "text", defaultValue: "p0 * sin(2*pi*p1*t + p2)" },
+      { key: "p0", label: "p0", type: "number", defaultValue: 1, step: 0.1 },
+      { key: "p1", label: "p1", type: "number", defaultValue: 5, step: 0.1 },
+      { key: "p2", label: "p2", type: "number", defaultValue: 0, step: 0.1 }
+    ]
+  },
+  {
     kind: "add",
     type: "operation",
     label: "Add",
@@ -127,6 +140,19 @@ export const moduleDefinitions: ModuleDefinition[] = [
     description: "Multiply a signal by a scalar gain.",
     inputCount: 1,
     params: [{ key: "gain", label: "Gain", type: "number", defaultValue: 1.5, step: 0.1 }]
+  },
+  {
+    kind: "customUnary",
+    type: "operation",
+    label: "Custom Unary",
+    description: "Safe point-wise expression using x, t, n, sampleRate, and p0/p1/p2.",
+    inputCount: 1,
+    params: [
+      { key: "expression", label: "Expression", type: "text", defaultValue: "p0 * x + p1" },
+      { key: "p0", label: "p0", type: "number", defaultValue: 1, step: 0.1 },
+      { key: "p1", label: "p1", type: "number", defaultValue: 0, step: 0.1 },
+      { key: "p2", label: "p2", type: "number", defaultValue: 0, step: 0.1 }
+    ]
   },
   {
     kind: "delay",

@@ -168,10 +168,12 @@ const moduleIconMap: Record<string, LucideIcon> = {
   noise: Shuffle,
   constant: CircleDot,
   import: Upload,
+  customSource: Braces,
   add: Plus,
   subtract: Minus,
   multiply: Sigma,
   scale: SlidersHorizontal,
+  customUnary: Braces,
   delay: Activity,
   convolve: Repeat,
   correlate: GitBranch,
@@ -612,9 +614,11 @@ const ProvenanceBox = ({ provenance }: { provenance?: Signal["provenance"] }) =>
 };
 
 const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => void }) => {
-  const sources = moduleDefinitions.filter((definition) => definition.type === "source");
-  const operations = moduleDefinitions.filter((definition) => definition.type === "operation");
+  const customKinds = new Set(["customSource", "customUnary"]);
+  const sources = moduleDefinitions.filter((definition) => definition.type === "source" && !customKinds.has(definition.kind));
+  const operations = moduleDefinitions.filter((definition) => definition.type === "operation" && !customKinds.has(definition.kind));
   const analysis = moduleDefinitions.filter((definition) => definition.type === "analysis");
+  const custom = moduleDefinitions.filter((definition) => customKinds.has(definition.kind));
 
   return (
     <aside className="module-library">
@@ -663,6 +667,23 @@ const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => voi
         </h2>
         <div className="module-list">
           {analysis.map((definition) => (
+            <button key={definition.kind} className={`module-card ${definition.type}`} draggable onDragStart={(event) => event.dataTransfer.setData("module-kind", definition.kind)} onClick={() => onAdd(definition)}>
+              <i>
+                <ModuleIcon kind={definition.kind} />
+              </i>
+              <span>{definition.label}</span>
+              <small>{definition.description}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h2>
+          <Braces size={15} />
+          Custom
+        </h2>
+        <div className="module-list">
+          {custom.map((definition) => (
             <button key={definition.kind} className={`module-card ${definition.type}`} draggable onDragStart={(event) => event.dataTransfer.setData("module-kind", definition.kind)} onClick={() => onAdd(definition)}>
               <i>
                 <ModuleIcon kind={definition.kind} />
@@ -1297,6 +1318,19 @@ const Inspector = ({
                     value={Array.isArray(value) ? value.join(", ") : String(value)}
                     onChange={(event) => onChangeNode({ ...node, params: { ...node.params, [param.key]: parseArray(event.target.value) } })}
                   />
+                ) : param.type === "text" ? (
+                  <textarea
+                    value={String(value ?? "")}
+                    onChange={(event) => onChangeNode({ ...node, params: { ...node.params, [param.key]: event.target.value } })}
+                  />
+                ) : param.type === "select" ? (
+                  <select value={String(value ?? param.defaultValue)} onChange={(event) => onChangeNode({ ...node, params: { ...node.params, [param.key]: event.target.value } })}>
+                    {(param.options ?? []).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
                   <input
                     type="number"
