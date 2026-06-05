@@ -41,23 +41,25 @@ const allowedExpressionNames = new Set([...expressionVariableNames, ...expressio
 const expressionNamePattern = /[A-Za-z_][A-Za-z0-9_]*/g;
 const expressionCharacterPattern = /^[0-9A-Za-z_+\-*/%^().,\s]+$/;
 
-type ExpressionVariables = Partial<Record<(typeof expressionVariableNames)[number], number>>;
+type ExpressionVariables = Record<string, number | undefined>;
 type ExpressionFunction = (...args: Array<number | ((...args: number[]) => number)>) => unknown;
 type CompiledExpression = { fn: ExpressionFunction; error?: never } | { fn?: never; error: string };
 
 const expressionText = (params: Record<string, unknown>, fallback: string) => (typeof params.expression === "string" ? params.expression : fallback);
+const isInputExpressionName = (name: string) => /^x\d+$/.test(name);
 
-const compileExpression = (expression: string): CompiledExpression => {
+const compileExpression = (expression: string, extraVariableNames: string[] = []): CompiledExpression => {
   const normalizedExpression = expression.trim().replaceAll("^", "**");
   if (normalizedExpression.length === 0) return { error: "Expression cannot be empty." };
   if (!expressionCharacterPattern.test(normalizedExpression)) return { error: "Expression contains unsupported characters." };
 
+  const allowedNames = new Set([...allowedExpressionNames, ...extraVariableNames]);
   const identifiers = normalizedExpression.match(expressionNamePattern) ?? [];
-  const unknownIdentifier = identifiers.find((identifier) => !allowedExpressionNames.has(identifier));
+  const unknownIdentifier = identifiers.find((identifier) => !allowedNames.has(identifier) && !isInputExpressionName(identifier));
   if (unknownIdentifier) return { error: `Unknown expression symbol: ${unknownIdentifier}` };
 
   try {
-    const argumentNames = [...expressionVariableNames, ...expressionSymbolNames];
+    const argumentNames = [...expressionVariableNames, ...extraVariableNames, ...expressionSymbolNames];
     const fn = new Function(...argumentNames, `"use strict"; return (${normalizedExpression});`) as ExpressionFunction;
     return { fn };
   } catch {
@@ -67,13 +69,15 @@ const compileExpression = (expression: string): CompiledExpression => {
 
 const evaluateExpressionValue = (
   compiled: CompiledExpression,
-  variables: ExpressionVariables
+  variables: ExpressionVariables,
+  extraVariableNames: string[] = []
 ): { value: number; warning?: string } => {
   if (!compiled.fn) return { value: 0, warning: compiled.error };
   try {
     const variableValues = expressionVariableNames.map((name) => variables[name] ?? 0);
+    const extraVariableValues = extraVariableNames.map((name) => variables[name] ?? 0);
     const symbolValues = expressionSymbolNames.map((name) => expressionSymbols[name as keyof typeof expressionSymbols]);
-    const result = compiled.fn(...variableValues, ...symbolValues);
+    const result = compiled.fn(...variableValues, ...extraVariableValues, ...symbolValues);
     const value = Number(result);
     if (!Number.isFinite(value)) return { value: 0, warning: "Expression produced a non-finite value." };
     return { value };
@@ -405,21 +409,27 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
       const gain = asNumber(node.params.gain, 1);
       return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, inputs[0].values.map((value) => value * gain))) };
     }
-    case "customUnary": {
-      const input = inputs[0];
-      const expression = expressionText(node.params, "p0 * x + p1");
-      const compiled = compileExpression(expression);
+    case "customExpression": {
+      const inputNames = inputs.map((_, index) => `x${index}`);
+      const expression = expressionText(node.params, "x0 + p0 * x1");
+      const compiled = compileExpression(expression, inputNames);
       const p0 = asNumber(node.params.p0, 1);
       const p1 = asNumber(node.params.p1, 0);
       const p2 = asNumber(node.params.p2, 0);
       if (!compiled.fn) return { error: compiled.error };
       const warnings = new Set<string>();
-      const values = input.values.map((value, index) => {
-        const result = evaluateExpressionValue(compiled, { x: value, t: input.time[index] ?? index / input.sampleRate, n: index, sampleRate: input.sampleRate, p0, p1, p2 });
+      const length = Math.min(...inputs.map((input) => input.values.length));
+      const values = Array.from({ length }, (_, index) => {
+        const expressionInputs = Object.fromEntries(inputs.map((input, inputIndex) => [`x${inputIndex}`, input.values[index] ?? 0]));
+        const result = evaluateExpressionValue(
+          compiled,
+          { ...expressionInputs, t: inputs[0].time[index] ?? index / inputs[0].sampleRate, n: index, sampleRate: inputs[0].sampleRate, p0, p1, p2 },
+          inputNames
+        );
         if (result.warning) warnings.add(result.warning);
         return result.value;
       });
-      const signal = withOperationProvenance(cloneWithValues(input, node.id, name, values));
+      const signal = withOperationProvenance(cloneWithValues(inputs[0], node.id, name, values));
       return {
         signal: {
           ...signal,
@@ -427,6 +437,8 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
         }
       };
     }
+    case "externalCommand":
+      return { error: "External command execution requires the desktop shell or local backend protocol." };
     case "delay": {
       const samples = Math.max(0, Math.floor(asNumber(node.params.samples, 0)));
       return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, [...Array(samples).fill(0), ...inputs[0].values])) };

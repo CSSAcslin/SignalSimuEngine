@@ -274,18 +274,36 @@ describe("operation modules", () => {
     expect(result.signals.get("corr")?.values).toEqual([1, 3, 5, 3]);
   });
 
-  it("applies custom unary expression operations to each input sample", () => {
+  it("applies custom multi-input expressions to aligned input samples", () => {
     const graph: SignalGraph = {
       nodes: [
         { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 3, params: { values: [1, 2, 3] } },
-        { id: "custom", type: "operation", kind: "customUnary", name: "Custom Unary", position: { x: 0, y: 0 }, timelineOffset: 0, params: { expression: "p0 * x + p1", p0: 2, p1: -1, p2: 0 } }
+        { id: "y", type: "source", kind: "import", name: "Y", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 3, params: { values: [10, 20, 30] } },
+        { id: "custom", type: "operation", kind: "customExpression", name: "Custom Expression", position: { x: 0, y: 0 }, timelineOffset: 0, params: { expression: "x0 + p0 * x1 + n", p0: 2, p1: 0, p2: 0 } }
       ],
-      edges: [{ id: "x-custom", from: "x", to: "custom" }]
+      edges: [
+        { id: "x-custom", from: "x", to: "custom" },
+        { id: "y-custom", from: "y", to: "custom" }
+      ]
     };
 
     const signal = evaluateGraph(graph).signals.get("custom");
 
-    expect(signal?.values).toEqual([1, 3, 5]);
+    expect(signal?.values).toEqual([21, 43, 65]);
+  });
+
+  it("reports external command nodes as backend work in the TypeScript preview", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 2, params: { values: [1, 2] } },
+        { id: "external", type: "operation", kind: "externalCommand", name: "External Command", position: { x: 0, y: 0 }, timelineOffset: 0, params: { executablePath: "tool.exe", arguments: "--input {input} --output {output}", timeoutMs: 30000 } }
+      ],
+      edges: [{ id: "x-external", from: "x", to: "external" }]
+    };
+
+    const result = evaluateGraph(graph);
+
+    expect(result.errors.get("external")).toContain("External command execution requires");
   });
 
   it("normalizes a signal without mutating the original values", () => {

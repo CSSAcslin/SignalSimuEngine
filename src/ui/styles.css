@@ -250,6 +250,36 @@ button {
   margin-top: 20px;
 }
 
+.module-search {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid #d8e4ec;
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  margin: -4px 0 16px;
+  padding: 8px 10px;
+}
+
+.module-search input {
+  background: transparent;
+  border: 0;
+  color: #102a43;
+  flex: 1;
+  font-size: 13px;
+  min-width: 0;
+  outline: 0;
+}
+
+.module-empty {
+  border: 1px dashed #d8e4ec;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
 .module-library h2 {
   display: flex;
   align-items: center;

@@ -21,6 +21,7 @@ import {
   Plus,
   Repeat,
   Save,
+  Search,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -173,7 +174,8 @@ const moduleIconMap: Record<string, LucideIcon> = {
   subtract: Minus,
   multiply: Sigma,
   scale: SlidersHorizontal,
-  customUnary: Braces,
+  customExpression: Braces,
+  externalCommand: Cable,
   delay: Activity,
   convolve: Repeat,
   correlate: GitBranch,
@@ -614,11 +616,22 @@ const ProvenanceBox = ({ provenance }: { provenance?: Signal["provenance"] }) =>
 };
 
 const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => void }) => {
-  const customKinds = new Set(["customSource", "customUnary"]);
-  const sources = moduleDefinitions.filter((definition) => definition.type === "source" && !customKinds.has(definition.kind));
-  const operations = moduleDefinitions.filter((definition) => definition.type === "operation" && !customKinds.has(definition.kind));
-  const analysis = moduleDefinitions.filter((definition) => definition.type === "analysis");
-  const custom = moduleDefinitions.filter((definition) => customKinds.has(definition.kind));
+  const [query, setQuery] = useState("");
+  const customKinds = new Set(["customSource", "customExpression", "externalCommand"]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchesQuery = (definition: ModuleDefinition) => {
+    if (!normalizedQuery) return true;
+    return [definition.label, definition.description, definition.kind, definition.type]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  };
+  const visibleDefinitions = moduleDefinitions.filter(matchesQuery);
+  const sources = visibleDefinitions.filter((definition) => definition.type === "source" && !customKinds.has(definition.kind));
+  const operations = visibleDefinitions.filter((definition) => definition.type === "operation" && !customKinds.has(definition.kind));
+  const analysis = visibleDefinitions.filter((definition) => definition.type === "analysis");
+  const custom = visibleDefinitions.filter((definition) => customKinds.has(definition.kind));
+  const hasResults = sources.length + operations.length + analysis.length + custom.length > 0;
 
   return (
     <aside className="module-library">
@@ -626,6 +639,11 @@ const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => voi
         <Database size={17} />
         <span>Module Library</span>
       </div>
+      <label className="module-search">
+        <Search size={14} />
+        <input type="search" placeholder="Search modules" value={query} onChange={(event) => setQuery(event.target.value)} />
+      </label>
+      {!hasResults ? <div className="module-empty">No modules match "{query}".</div> : null}
       <section>
         <h2>
           <Waves size={15} />

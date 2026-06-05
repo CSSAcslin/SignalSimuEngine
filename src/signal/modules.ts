@@ -142,14 +142,29 @@ export const moduleDefinitions: ModuleDefinition[] = [
     params: [{ key: "gain", label: "Gain", type: "number", defaultValue: 1.5, step: 0.1 }]
   },
   {
-    kind: "customUnary",
+    kind: "customExpression",
     type: "operation",
-    label: "Custom Unary",
-    description: "Safe point-wise expression using x, t, n, sampleRate, and p0/p1/p2.",
-    inputCount: 1,
+    label: "Custom Expression",
+    description: "Safe multi-input expression using x0, x1, t, n, sampleRate, and p0/p1/p2.",
+    inputCount: "many",
     params: [
-      { key: "expression", label: "Expression", type: "text", defaultValue: "p0 * x + p1" },
+      { key: "expression", label: "Expression", type: "text", defaultValue: "x0 + p0 * x1" },
       { key: "p0", label: "p0", type: "number", defaultValue: 1, step: 0.1 },
+      { key: "p1", label: "p1", type: "number", defaultValue: 0, step: 0.1 },
+      { key: "p2", label: "p2", type: "number", defaultValue: 0, step: 0.1 }
+    ]
+  },
+  {
+    kind: "externalCommand",
+    type: "operation",
+    label: "External Command",
+    description: "Run a packaged executable module through the desktop shell protocol.",
+    inputCount: "many",
+    params: [
+      { key: "executablePath", label: "Executable Path", type: "text", defaultValue: "" },
+      { key: "arguments", label: "Arguments", type: "text", defaultValue: "--input {input} --output {output}" },
+      { key: "timeoutMs", label: "Timeout", type: "number", defaultValue: 30000, min: 1000, step: 1000, unit: "ms" },
+      { key: "p0", label: "p0", type: "number", defaultValue: 0, step: 0.1 },
       { key: "p1", label: "p1", type: "number", defaultValue: 0, step: 0.1 },
       { key: "p2", label: "p2", type: "number", defaultValue: 0, step: 0.1 }
     ]

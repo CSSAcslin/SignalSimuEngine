@@ -3,6 +3,7 @@ export * from "./analysisBackendStatus";
 export * from "./analysisView";
 export * from "./engine";
 export * from "./exporters";
+export * from "./externalCommandBackend";
 export * from "./graphEditing";
 export * from "./importers";
 export * from "./modules";

@@ -22,11 +22,15 @@ describe("module definitions", () => {
 
   it("declares safe custom expression module templates", () => {
     const customSource = moduleDefinitions.find((definition) => definition.kind === "customSource");
-    const customUnary = moduleDefinitions.find((definition) => definition.kind === "customUnary");
+    const customExpression = moduleDefinitions.find((definition) => definition.kind === "customExpression");
+    const externalCommand = moduleDefinitions.find((definition) => definition.kind === "externalCommand");
 
     expect(customSource).toMatchObject({ type: "source", label: "Custom Source", inputCount: 0 });
-    expect(customUnary).toMatchObject({ type: "operation", label: "Custom Unary", inputCount: 1 });
+    expect(customExpression).toMatchObject({ type: "operation", label: "Custom Expression", inputCount: "many" });
+    expect(externalCommand).toMatchObject({ type: "operation", label: "External Command", inputCount: "many" });
     expect(customSource?.params.some((param) => param.key === "expression" && param.type === "text")).toBe(true);
-    expect(customUnary?.params.some((param) => param.key === "expression" && param.type === "text")).toBe(true);
+    expect(customExpression?.params.some((param) => param.key === "expression" && param.type === "text")).toBe(true);
+    expect(externalCommand?.params.some((param) => param.key === "executablePath" && param.type === "text")).toBe(true);
+    expect(moduleDefinitions.some((definition) => String(definition.kind) === "customUnary")).toBe(false);
   });
 });
