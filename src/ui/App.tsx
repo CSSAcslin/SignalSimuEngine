@@ -13,6 +13,7 @@ import {
   FileJson,
   FlaskConical,
   Focus,
+  FolderOpen,
   GitBranch,
   Hand,
   Maximize2,
@@ -22,6 +23,7 @@ import {
   PanelRight,
   Plus,
   Repeat,
+  Redo2,
   Save,
   Search,
   Shuffle,
@@ -33,13 +35,14 @@ import {
   Square,
   Triangle,
   Trash2,
+  Undo2,
   Upload,
   ZoomIn,
   ZoomOut,
   Waves
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCustomExpressionInputRows, isEditableEventTarget } from "./inspectorHelpers";
 import {
@@ -807,6 +810,12 @@ const NodeCanvas = ({
   onDragConnect,
   onFinishConnect,
   onAutoLayout,
+  onUndo,
+  onRedo,
+  onClear,
+  canUndo,
+  canRedo,
+  canClear,
   onCanvasView
 }: {
   graph: SignalGraph;
@@ -834,6 +843,12 @@ const NodeCanvas = ({
   onDragConnect: (point?: { fromId: string; x: number; y: number }) => void;
   onFinishConnect: (id: string) => void;
   onAutoLayout: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onClear: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  canClear: boolean;
   onCanvasView: (view: { x: number; y: number; zoom: number }) => void;
 }) => {
   const nodeMap = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -858,6 +873,30 @@ const NodeCanvas = ({
       })
       .join(" ");
   };
+  const fitAllNodes = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (graph.nodes.length === 0) {
+      onCanvasView({ x: 0, y: 0, zoom: 1 });
+      return;
+    }
+    const canvas = event.currentTarget.closest(".canvas-shell")?.querySelector(".node-canvas") as HTMLElement | null;
+    const width = canvas?.clientWidth ?? 900;
+    const height = canvas?.clientHeight ?? 520;
+    const nodeWidth = 190;
+    const nodeHeight = 118;
+    const padding = 72;
+    const minX = Math.min(...graph.nodes.map((node) => node.position.x));
+    const minY = Math.min(...graph.nodes.map((node) => node.position.y));
+    const maxX = Math.max(...graph.nodes.map((node) => node.position.x + nodeWidth));
+    const maxY = Math.max(...graph.nodes.map((node) => node.position.y + nodeHeight));
+    const boxWidth = Math.max(maxX - minX, 1);
+    const boxHeight = Math.max(maxY - minY, 1);
+    const zoom = Math.min(1.35, Math.max(0.55, Math.min((width - padding * 2) / boxWidth, (height - padding * 2) / boxHeight)));
+    onCanvasView({
+      x: (width - boxWidth * zoom) / 2 - minX * zoom,
+      y: (height - boxHeight * zoom) / 2 - minY * zoom,
+      zoom
+    });
+  };
 
   return (
     <div className="canvas-shell">
@@ -868,11 +907,22 @@ const NodeCanvas = ({
         <button onClick={() => onCanvasView({ ...canvasView, zoom: Math.max(0.55, canvasView.zoom - 0.1) })} title="Zoom out">
           <ZoomOut size={14} />
         </button>
-        <button onClick={() => onCanvasView({ x: 0, y: 0, zoom: 1 })} title="Fit view">
+        <button onClick={fitAllNodes} title="Fit all nodes">
           <Maximize2 size={14} />
         </button>
         <button onClick={onAutoLayout} title="Auto layout">
           <Focus size={14} />
+        </button>
+        <i className="canvas-tool-separator" />
+        <button onClick={onUndo} disabled={!canUndo} title="Undo">
+          <Undo2 size={14} />
+        </button>
+        <button onClick={onRedo} disabled={!canRedo} title="Redo">
+          <Redo2 size={14} />
+        </button>
+        <i className="canvas-tool-separator" />
+        <button onClick={onClear} disabled={!canClear} title="Clear canvas">
+          <Trash2 size={14} />
         </button>
         <span>
           <Hand size={13} />
@@ -2032,29 +2082,21 @@ export const App = () => {
             accept=".json,application/json"
             onChange={(event) => void loadProjectFile(event.target.files?.[0])}
           />
-          <button onClick={() => csvInputRef.current?.click()}>
-            <Upload size={15} />
-            Import CSV
-          </button>
           <button onClick={() => projectInputRef.current?.click()}>
-            <FileJson size={15} />
+            <FolderOpen size={15} />
             Load
-          </button>
-          <button onClick={undoGraph} disabled={undoStack.length === 0}>
-            <Repeat size={15} />
-            Undo
-          </button>
-          <button onClick={redoGraph} disabled={redoStack.length === 0}>
-            <Repeat size={15} />
-            Redo
           </button>
           <button onClick={() => downloadText("signalforge-project.json", serializeProjectGraph({ ...graph, selectedNodeId }), "application/json")}>
             <Save size={15} />
             Save
           </button>
+          <button onClick={() => csvInputRef.current?.click()}>
+            <Upload size={15} />
+            Import CSV
+          </button>
           <button onClick={() => downloadText("signalforge-reproduce.py", exportPython({ ...graph, selectedNodeId }), "text/x-python")} title="Export a Python reproduction script for the current node graph">
             <FileCode size={15} />
-            Reproduce.py
+            Export Py
           </button>
         </div>
         {csvImportMessage ? <div className="topbar-message">{csvImportMessage}</div> : null}
@@ -2069,10 +2111,6 @@ export const App = () => {
               <p className="canvas-shortcuts">Left-drag pans. Shift-drag box selects. Shift+scroll zooms. Ctrl+Z/Y undo/redo. Delete removes selection.</p>
             </div>
             <div className="canvas-status-group">
-              <button className="canvas-action-button" onClick={clearCanvas} disabled={graph.nodes.length === 0} title="Clear all canvas nodes and edges">
-                <Trash2 size={14} />
-                Clear
-              </button>
               <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length + externalCommandRunningIds.length} />
               <div className="status-chip">
                 <Sparkles size={14} />
@@ -2128,6 +2166,12 @@ export const App = () => {
               setDragConnection(undefined);
             }}
             onAutoLayout={autoLayout}
+            onUndo={undoGraph}
+            onRedo={redoGraph}
+            onClear={clearCanvas}
+            canUndo={undoStack.length > 0}
+            canRedo={redoStack.length > 0}
+            canClear={graph.nodes.length > 0}
           />
           <Timeline
             displayName={displayNode?.name}

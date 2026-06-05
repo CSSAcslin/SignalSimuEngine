@@ -506,6 +506,24 @@ button {
   background: #f0f9ff;
 }
 
+.canvas-tools button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.canvas-tools button:disabled:hover {
+  color: #334155;
+  border-color: transparent;
+  background: transparent;
+}
+
+.canvas-tool-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: #d8e5ec;
+}
+
 .canvas-tools span {
   display: inline-flex;
   align-items: center;
