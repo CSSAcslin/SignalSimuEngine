@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Clock,
   Database,
   Copy,
   Eye,
@@ -16,12 +17,14 @@ import {
   FolderOpen,
   GitBranch,
   Hand,
+  Hash,
   Maximize2,
   Minus,
   MousePointer2,
   MoreVertical,
   PanelRight,
   Plus,
+  Radical,
   Repeat,
   Redo2,
   Save,
@@ -33,6 +36,9 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
+  SquareActivity,
+  TableCellsSplit,
+  Terminal,
   Triangle,
   Trash2,
   Undo2,
@@ -194,40 +200,42 @@ const clampNumber = (value: number, min: number, max: number, fallback: number) 
   return Math.min(max, Math.max(min, value));
 };
 
-const moduleIconMap: Record<string, LucideIcon> = {
+const moduleIconMap: Record<string, LucideIcon | string> = {
   sine: Waves,
   triangle: Triangle,
   square: Square,
   pulse: CircleDot,
-  gaussianPulse: Activity,
+  gaussianPulse: SquareActivity,
   chirp: Sparkles,
   noise: Shuffle,
-  constant: CircleDot,
+  constant: "C",
   import: Upload,
   customSource: Braces,
   add: Plus,
   subtract: Minus,
-  multiply: Sigma,
+  multiply: "×",
   scale: SlidersHorizontal,
   customExpression: Braces,
-  externalCommand: Cable,
-  delay: Activity,
+  externalCommand: Terminal,
+  delay: Clock,
   convolve: Repeat,
   correlate: GitBranch,
-  fft: Activity,
+  fft: "FFT",
   normalize: Focus,
-  rms: Activity,
-  quantiles: Sigma,
-  distribution: Database,
-  snr: SlidersHorizontal,
-  dominantFrequency: Waves,
+  rms: Radical,
+  quantiles: "P%",
+  distribution: TableCellsSplit,
+  snr: "SNR",
+  dominantFrequency: Hash,
   bandwidth: Maximize2,
-  stft: Activity,
-  cwt: Waves
+  stft: "STFT",
+  cwt: "CWT"
 };
 
 const ModuleIcon = ({ kind, size = 16 }: { kind: string; size?: number }) => {
-  const Icon = moduleIconMap[kind] ?? Sigma;
+  const icon = moduleIconMap[kind] ?? Sigma;
+  if (typeof icon === "string") return <span className="module-icon-text">{icon}</span>;
+  const Icon = icon;
   return <Icon size={size} />;
 };
 

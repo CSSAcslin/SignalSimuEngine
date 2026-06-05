@@ -96,6 +96,35 @@ describe("graph editing helpers", () => {
     expect(multiply?.position.x).toBeLessThan(output?.position.x ?? 0);
   });
 
+  it("auto-layouts unconnected nodes into source operation and analysis zones", () => {
+    const laidOut = autoLayoutGraph({
+      nodes: [
+        { id: "s1", type: "source", kind: "sine", name: "S1", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "s2", type: "source", kind: "noise", name: "S2", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "s3", type: "source", kind: "constant", name: "S3", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "op1", type: "operation", kind: "scale", name: "OP1", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "op2", type: "operation", kind: "customExpression", name: "OP2", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "op3", type: "operation", kind: "externalCommand", name: "OP3", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "op4", type: "operation", kind: "normalize", name: "OP4", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "a1", type: "operation", kind: "fft", name: "A1", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "a2", type: "operation", kind: "stft", name: "A2", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "a3", type: "operation", kind: "quantiles", name: "A3", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "a4", type: "operation", kind: "distribution", name: "A4", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} }
+      ],
+      edges: []
+    });
+    const node = (id: string) => laidOut.nodes.find((item) => item.id === id);
+
+    expect(node("s1")?.position.x).toBeLessThan(node("op1")?.position.x ?? 0);
+    expect(node("op1")?.position.x).toBeLessThan(node("a1")?.position.x ?? 0);
+    expect(node("s3")?.position.x).toBe(node("s1")?.position.x);
+    expect(node("op4")?.position.x).toBe(node("op1")?.position.x);
+    expect(node("a4")?.position.x).toBe(node("a1")?.position.x);
+    expect(node("s3")?.position.y).toBeGreaterThan(node("s1")?.position.y ?? 0);
+    expect(node("op4")?.position.y).toBeGreaterThan(node("op1")?.position.y ?? 0);
+    expect(node("a4")?.position.y).toBeGreaterThan(node("a1")?.position.y ?? 0);
+  });
+
   it("pins a display target independently from selected node", () => {
     const pinned = setDisplayNode({ ...graph, selectedNodeId: "a" }, "c");
 

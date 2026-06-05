@@ -172,10 +172,33 @@ export const autoLayoutGraph = (graph: SignalGraph): SignalGraph => {
     });
   }
 
+  const connectedIds = new Set(graph.edges.flatMap((edge) => [edge.from, edge.to]));
+  const unconnectedNodes = graph.nodes.filter((node) => !connectedIds.has(node.id));
+  const zoneNodes = new Set(unconnectedNodes.map((node) => node.id));
   const lanes = new Map<number, number>();
+  const zoneLanes = new Map<string, number>();
+  const zoneConfig = (node: SignalNode) => {
+    const definition = getModuleDefinition(node.kind);
+    if (node.type === "source") return { key: "source", baseX: 76, columns: 2 };
+    if (definition?.type === "analysis") return { key: "analysis", baseX: 76 + 5 * 270, columns: 3 };
+    return { key: "operation", baseX: 76 + 2 * 270, columns: 3 };
+  };
+
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {
+      if (zoneNodes.has(node.id)) {
+        const zone = zoneConfig(node);
+        const lane = zoneLanes.get(zone.key) ?? 0;
+        zoneLanes.set(zone.key, lane + 1);
+        return {
+          ...node,
+          position: {
+            x: zone.baseX + (lane % zone.columns) * 270,
+            y: 84 + Math.floor(lane / zone.columns) * 132
+          }
+        };
+      }
       const column = depth.get(node.id) ?? 0;
       const lane = lanes.get(column) ?? 0;
       lanes.set(column, lane + 1);

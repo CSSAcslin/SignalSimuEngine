@@ -654,6 +654,17 @@ button {
   background: #e0f2fe;
 }
 
+.module-icon-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  color: currentColor;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .graph-node.operation .node-icon {
   color: #15803d;
   background: #dcfce7;
