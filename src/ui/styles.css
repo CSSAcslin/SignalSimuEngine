@@ -280,6 +280,26 @@ button {
   padding: 12px;
 }
 
+.module-scroll-top {
+  position: sticky;
+  bottom: 10px;
+  z-index: 6;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  margin: 14px 0 0 auto;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  color: #0369a1;
+  background: #f0f9ff;
+  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.16);
+}
+
+.module-scroll-top svg {
+  transform: rotate(180deg);
+}
+
 .module-library h2 {
   display: flex;
   align-items: center;
@@ -1711,6 +1731,32 @@ button {
   background: #f8fbfd;
 }
 
+.provenance-title,
+.collapsible-title {
+  display: inline-flex;
+  align-items: center;
+}
+
+.collapsible-title {
+  width: 100%;
+  height: auto;
+  justify-content: space-between;
+  border: 0;
+  padding: 0;
+  color: #0f766e;
+  background: transparent;
+  cursor: pointer;
+}
+
+.export-stack .collapsible-title,
+.export-stack .collapsible-title:hover:not(:disabled) {
+  border: 0;
+  color: #0f766e;
+  background: transparent;
+  padding: 0;
+}
+
+.collapsible-label,
 .provenance-title {
   display: inline-flex;
   align-items: center;
@@ -1719,6 +1765,11 @@ button {
   font-size: 11px;
   font-weight: 850;
   text-transform: uppercase;
+}
+
+.collapsible-body {
+  display: grid;
+  gap: 8px;
 }
 
 .provenance-box dl {
@@ -1744,6 +1795,74 @@ button {
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.input-variable-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  border: 1px solid #d8e5ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.input-variable-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.input-variable-box p,
+.input-variable-box small {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.input-variable-list {
+  display: grid;
+  gap: 6px;
+}
+
+.input-variable-list div {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.input-variable-list code {
+  grid-row: span 2;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.input-variable-list span {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-variable-list em {
+  color: #64748b;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.input-variable-list .unavailable {
+  opacity: 0.62;
 }
 
 .inspector-analysis {
@@ -1895,6 +2014,10 @@ button {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+  border: 1px solid #d8e5ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbfd;
 }
 
 .export-stack-title {

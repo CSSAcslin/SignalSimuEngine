@@ -3,6 +3,8 @@ import {
   ArrowDownToLine,
   Braces,
   Cable,
+  ChevronDown,
+  ChevronRight,
   CircleDot,
   Database,
   Copy,
@@ -37,7 +39,9 @@ import {
   Waves
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createCustomExpressionInputRows, isEditableEventTarget } from "./inspectorHelpers";
 import {
   autoLayoutGraph,
   canConnectGraphNodes,
@@ -533,11 +537,7 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
   const distributionMax = analysis.type === "distribution" ? Math.max(...analysis.counts, 1) : 1;
 
   return (
-    <div className={`inspector-analysis ${summary.kind}`}>
-      <div className="provenance-title">
-        <Activity size={14} />
-        <span>Analysis Results</span>
-      </div>
+    <>
       <div className="analysis-inspector-head">
         <span>{summary.primaryLabel}</span>
         <strong>{summary.primaryText ?? formatValue(summary.primaryValue)}</strong>
@@ -587,36 +587,60 @@ const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => 
           </div>
         ))}
       </dl>
-    </div>
+    </>
   );
 };
 
 const ProvenanceBox = ({ provenance }: { provenance?: Signal["provenance"] }) => {
   if (!provenance) return null;
   return (
-    <div className="provenance-box">
-      <div className="provenance-title">
-        <GitBranch size={14} />
-        <span>Provenance</span>
-      </div>
-      <dl>
-        <dt>Node</dt>
-        <dd>{provenance.nodeName} / {provenance.nodeKind}</dd>
-        <dt>Inputs</dt>
-        <dd>{provenance.inputNodeIds.length > 0 ? provenance.inputNodeIds.join(", ") : "None"}</dd>
-        <dt>Samples</dt>
-        <dd>{provenance.sampleCount?.toLocaleString() ?? "-"}</dd>
-        <dt>Rate</dt>
-        <dd>{provenance.sampleRate ? `${provenance.sampleRate.toLocaleString()} Hz` : "-"}</dd>
-        <dt>Backend</dt>
-        <dd>{provenance.backend ?? "TypeScript core"}</dd>
-      </dl>
+    <dl>
+      <dt>Node</dt>
+      <dd>{provenance.nodeName} / {provenance.nodeKind}</dd>
+      <dt>Inputs</dt>
+      <dd>{provenance.inputNodeIds.length > 0 ? provenance.inputNodeIds.join(", ") : "None"}</dd>
+      <dt>Samples</dt>
+      <dd>{provenance.sampleCount?.toLocaleString() ?? "-"}</dd>
+      <dt>Rate</dt>
+      <dd>{provenance.sampleRate ? `${provenance.sampleRate.toLocaleString()} Hz` : "-"}</dd>
+      <dt>Backend</dt>
+      <dd>{provenance.backend ?? "TypeScript core"}</dd>
+    </dl>
+  );
+};
+
+const CollapsiblePanel = ({
+  title,
+  icon,
+  defaultOpen = true,
+  children,
+  className = "provenance-box"
+}: {
+  title: string;
+  icon: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+  className?: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <div className={className}>
+      <button className="collapsible-title" type="button" onClick={() => setIsOpen((open) => !open)} aria-expanded={isOpen}>
+        <span className="collapsible-label">
+          {icon}
+          <span>{title}</span>
+        </span>
+        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {isOpen ? <div className="collapsible-body">{children}</div> : null}
     </div>
   );
 };
 
 const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => void }) => {
   const [query, setQuery] = useState("");
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const libraryRef = useRef<HTMLElement | null>(null);
   const customKinds = new Set(["customSource", "customExpression", "externalCommand"]);
   const normalizedQuery = query.trim().toLowerCase();
   const matchesQuery = (definition: ModuleDefinition) => {
@@ -634,7 +658,11 @@ const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => voi
   const hasResults = sources.length + operations.length + analysis.length + custom.length > 0;
 
   return (
-    <aside className="module-library">
+    <aside
+      className="module-library"
+      ref={libraryRef}
+      onScroll={(event) => setShowScrollTop(event.currentTarget.scrollTop > 180)}
+    >
       <div className="panel-title">
         <Database size={17} />
         <span>Module Library</span>
@@ -712,6 +740,11 @@ const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => voi
           ))}
         </div>
       </section>
+      {showScrollTop ? (
+        <button className="module-scroll-top" type="button" onClick={() => libraryRef.current?.scrollTo({ top: 0, behavior: "smooth" })} title="Scroll module library to top">
+          <ArrowDownToLine size={15} />
+        </button>
+      ) : null}
     </aside>
   );
 };
@@ -1252,6 +1285,8 @@ const Timeline = ({
 
 const Inspector = ({
   node,
+  graph,
+  signals,
   signal,
   analysis,
   error,
@@ -1263,6 +1298,8 @@ const Inspector = ({
   onExportNodeAnalysis
 }: {
   node?: SignalNode;
+  graph: SignalGraph;
+  signals: Map<string, Signal>;
   signal?: Signal;
   analysis?: AnalysisResult;
   error?: string;
@@ -1279,6 +1316,7 @@ const Inspector = ({
   const maxSourceDuration = Math.max(minSourceDuration, totalDuration - sourceStart);
   const outputLabel = signal ? "Signal" : analysis ? (analysis.type === "scalar" ? "Scalar analysis" : analysis.type === "spectrum" ? "Spectrum analysis" : "Time-frequency analysis") : "Unavailable";
   const provenance = analysis?.provenance ?? signal?.provenance;
+  const customInputRows = node?.kind === "customExpression" ? createCustomExpressionInputRows(graph, node.id, signals) : [];
 
   return (
     <aside className="inspector">
@@ -1362,6 +1400,28 @@ const Inspector = ({
               </label>
             );
           })}
+          {node.kind === "customExpression" ? (
+            <div className="input-variable-box">
+              <div className="input-variable-title">
+                <Braces size={14} />
+                <span>Input Variables</span>
+              </div>
+              {customInputRows.length === 0 ? (
+                <p>Connect signals to use x0, x1...</p>
+              ) : (
+                <div className="input-variable-list">
+                  {customInputRows.map((row) => (
+                    <div key={row.variable} className={row.available ? "" : "unavailable"}>
+                      <code>{row.variable}</code>
+                      <span>{row.nodeName}</span>
+                      <em>{row.detail}</em>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <small>Use x0, x1..., t, n, sampleRate, p0, p1, p2 and math functions.</small>
+            </div>
+          ) : null}
           {error ? <div className="error-box">{error}</div> : null}
           <div className="signal-stats">
             <strong>{signal ? signal.values.length.toLocaleString() : 0}</strong>
@@ -1369,11 +1429,7 @@ const Inspector = ({
             <strong>{signal ? signal.sampleRate.toLocaleString() : "-"}</strong>
             <span>Hz</span>
           </div>
-          <div className="provenance-box">
-            <div className="provenance-title">
-              <Activity size={14} />
-              <span>Run Summary</span>
-            </div>
+          <CollapsiblePanel title="Run Summary" icon={<Activity size={14} />}>
             <dl>
               <dt>Module</dt>
               <dd>{definition ? `${definition.label} / ${definition.type}` : node.kind}</dd>
@@ -1386,13 +1442,18 @@ const Inspector = ({
               <dt>Status</dt>
               <dd>{error ? "Error" : "Ready"}</dd>
             </dl>
-          </div>
-          {analysis ? <InspectorAnalysisResult analysis={analysis} /> : null}
-          <ProvenanceBox provenance={provenance} />
+          </CollapsiblePanel>
+          {analysis ? (
+            <CollapsiblePanel title="Analysis Results" icon={<Activity size={14} />} className={`inspector-analysis ${summarizeAnalysisResult(analysis).kind}`}>
+              <InspectorAnalysisResult analysis={analysis} />
+            </CollapsiblePanel>
+          ) : null}
+          <CollapsiblePanel title="Provenance" icon={<GitBranch size={14} />} defaultOpen={false}>
+            <ProvenanceBox provenance={provenance} />
+          </CollapsiblePanel>
         </>
       )}
-      <div className="export-stack">
-        <div className="export-stack-title">Selected Node Output</div>
+      <CollapsiblePanel title="Selected Node Output" icon={<ArrowDownToLine size={14} />} className="export-stack">
         {analysis ? (
           <>
             {analysis.type === "time-frequency" ? (
@@ -1429,7 +1490,7 @@ const Inspector = ({
             </button>
           </>
         )}
-      </div>
+      </CollapsiblePanel>
     </aside>
   );
 };
@@ -1624,6 +1685,7 @@ export const App = () => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isEditableEventTarget(event.target)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redoGraph();
@@ -2062,6 +2124,8 @@ export const App = () => {
         </section>
         <Inspector
           node={selectedNode}
+          graph={graph}
+          signals={evaluation.signals}
           signal={selectedSignal}
           error={selectedNodeId ? evaluation.errors.get(selectedNodeId) : undefined}
           sampleRate={sampleRate}
