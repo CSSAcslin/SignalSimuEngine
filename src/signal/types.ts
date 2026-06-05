@@ -73,6 +73,7 @@ export type ResultProvenance = {
   unit?: string;
   backend?: string;
   warnings?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type Spectrum = {

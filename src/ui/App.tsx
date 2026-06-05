@@ -168,7 +168,8 @@ const externalCommandResultToSignal = (node: SignalNode, request: ExternalComman
     sampleCount: result.values.length,
     unit: result.unit ?? "a.u.",
     backend: "external-command",
-    warnings: result.warnings ?? []
+    warnings: result.warnings ?? [],
+    metadata: result.metadata
   }
 });
 
@@ -632,6 +633,10 @@ const ProvenanceBox = ({ provenance }: { provenance?: Signal["provenance"] }) =>
       <dd>{provenance.sampleRate ? `${provenance.sampleRate.toLocaleString()} Hz` : "-"}</dd>
       <dt>Backend</dt>
       <dd>{provenance.backend ?? "TypeScript core"}</dd>
+      <dt>Warnings</dt>
+      <dd>{provenance.warnings && provenance.warnings.length > 0 ? provenance.warnings.join("; ") : "None"}</dd>
+      <dt>Metadata</dt>
+      <dd title={JSON.stringify(provenance.metadata ?? {})}>{provenance.metadata ? JSON.stringify(provenance.metadata) : "None"}</dd>
     </dl>
   );
 };
@@ -1958,7 +1963,7 @@ export const App = () => {
           nodes: [...current.nodes, node]
         };
       });
-      setCsvImportMessage(imported.warnings[0] ?? `Imported ${imported.values.length.toLocaleString()} samples from ${file.name}`);
+      setCsvImportMessage([imported.message, ...imported.warnings].join(" "));
     } catch (error) {
       setCsvImportMessage(error instanceof Error ? error.message : "CSV import failed.");
     } finally {

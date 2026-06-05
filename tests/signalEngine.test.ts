@@ -475,6 +475,33 @@ describe("exports", () => {
     expect(csv.trim()).toBe("# SignalForge signal export\n# node=s\n# sampleRate=2\n# unit=a.u.\n# params={}\ntime,value\n0,1\n0.5,-1");
   });
 
+  it("exports signal CSV with provenance backend and warnings for trustworthy reproduction", () => {
+    const csv = exportCsv({
+      id: "external",
+      name: "External",
+      sampleRate: 2,
+      unit: "mV",
+      time: [0],
+      values: [3],
+      params: { p0: 2 },
+      provenance: {
+        nodeId: "external",
+        nodeName: "External Command",
+        nodeKind: "externalCommand",
+        inputNodeIds: ["x"],
+        params: { executablePath: "tool.exe", p0: 2 },
+        sampleRate: 2,
+        sampleCount: 1,
+        unit: "mV",
+        backend: "external-command",
+        warnings: ["demo warning"]
+      }
+    });
+
+    expect(csv).toContain("# backend=external-command");
+    expect(csv).toContain("# warnings=[\"demo warning\"]");
+  });
+
   it("exports scalar and spectrum analysis results", () => {
     expect(
       exportAnalysisCsv({
@@ -574,6 +601,24 @@ describe("exports", () => {
     expect(script).toContain("import numpy as np");
     expect(script).toContain("nodes['a']");
     expect(script).toContain("np.sin");
+  });
+
+  it("exports a Python script with an explicit external command protocol stub", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 2, params: { values: [1, 2] } },
+        { id: "external", type: "operation", kind: "externalCommand", name: "External", position: { x: 0, y: 0 }, timelineOffset: 0, params: { executablePath: "tool.exe", arguments: "--input {input} --output {output}", timeoutMs: 30000 } }
+      ],
+      edges: [{ id: "x-external", from: "x", to: "external" }],
+      selectedNodeId: "external"
+    };
+
+    const script = exportPython(graph);
+
+    expect(script).toContain("def run_external_command");
+    expect(script).toContain("request.json");
+    expect(script).toContain("result.json");
+    expect(script).toContain("subprocess.run");
   });
 
   it("exports a NumPy .npy Float64 payload", async () => {

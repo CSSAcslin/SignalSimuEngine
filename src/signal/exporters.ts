@@ -1,6 +1,17 @@
 import type { AnalysisResult, Signal, SignalGraph, SignalNode } from "./types";
 
 const csvComments = (lines: string[]) => `${lines.map((line) => `# ${line}`).join("\n")}\n`;
+const compactJson = (value: unknown) => JSON.stringify(value ?? {});
+
+const provenanceCommentLines = (provenance: Signal["provenance"] | AnalysisResult["provenance"]) => {
+  if (!provenance) return [];
+  return [
+    `backend=${provenance.backend ?? "TypeScript core"}`,
+    `inputNodeIds=${compactJson(provenance.inputNodeIds)}`,
+    `provenanceParams=${compactJson(provenance.params)}`,
+    `warnings=${compactJson(provenance.warnings ?? [])}`
+  ];
+};
 
 export const exportCsv = (signal: Signal) => {
   const rows = [
@@ -9,7 +20,8 @@ export const exportCsv = (signal: Signal) => {
       `node=${signal.provenance?.nodeId ?? signal.id}`,
       `sampleRate=${signal.sampleRate}`,
       `unit=${signal.unit}`,
-      `params=${JSON.stringify(signal.params ?? {})}`
+      `params=${compactJson(signal.params ?? {})}`,
+      ...provenanceCommentLines(signal.provenance)
     ]).trimEnd(),
     "time,value"
   ];
@@ -24,7 +36,8 @@ export const exportAnalysisCsv = (analysis: AnalysisResult, format: "long" | "ma
     "SignalForge analysis export",
     `node=${analysis.provenance?.nodeId ?? analysis.id}`,
     `type=${analysis.type}`,
-    `params=${JSON.stringify(analysis.params ?? {})}`
+    `params=${compactJson(analysis.params ?? {})}`,
+    ...provenanceCommentLines(analysis.provenance)
   ]).trimEnd();
 
   if (analysis.type === "scalar") {
@@ -124,6 +137,10 @@ export const exportPython = (graph: SignalGraph) => {
     "# Protocol: SignalForge 1D Signal Protocol v3",
     "# Time-frequency nodes require SciPy-compatible execution.",
     "import numpy as np",
+    "import json",
+    "import subprocess",
+    "import tempfile",
+    "from pathlib import Path",
     "",
     "def safe_expression(expr, scope):",
     "    allowed = {",
@@ -170,6 +187,28 @@ export const exportPython = (graph: SignalGraph) => {
     "    n = min(len(x) for x in inputs)",
     "    return [x[:n] for x in inputs]",
     "",
+    "def run_external_command(inputs, params, sample_rate):",
+    "    executable = params.get('executablePath', '')",
+    "    if not executable:",
+    "        raise RuntimeError('External Command executablePath is empty.')",
+    "    arguments = params.get('arguments', '--input {input} --output {output}')",
+    "    timeout = params.get('timeoutMs', 30000) / 1000",
+    "    with tempfile.TemporaryDirectory(prefix='signalforge-external-') as tmp:",
+    "        request_path = Path(tmp) / 'request.json'",
+    "        result_path = Path(tmp) / 'result.json'",
+    "        request = {",
+    "            'sampleRate': sample_rate,",
+    "            'params': {key: value for key, value in params.items() if key not in ('executablePath', 'arguments', 'timeoutMs')},",
+    "            'inputs': [{'id': f'x{index}', 'name': f'x{index}', 'sampleRate': sample_rate, 'unit': 'a.u.', 'time': (np.arange(len(values)) / sample_rate).tolist(), 'values': np.asarray(values, dtype=float).tolist()} for index, values in enumerate(inputs)]",
+    "        }",
+    "        request_path.write_text(json.dumps(request, indent=2), encoding='utf-8')",
+    "        rendered = arguments.replace('{input}', str(request_path)).replace('{output}', str(result_path))",
+    "        subprocess.run([executable, *rendered.split()], check=True, timeout=timeout)",
+    "        result = json.loads(result_path.read_text(encoding='utf-8'))",
+    "        if result.get('type') != 'signal':",
+    "            raise RuntimeError(f\"Unsupported external command result type: {result.get('type')}\")",
+    "        return np.asarray(result.get('values', []), dtype=float)",
+    "",
     "def apply_operation(kind, inputs, params):",
     "    if kind == 'add': return np.sum(np.vstack(align(inputs)), axis=0)",
     "    if kind == 'subtract':",
@@ -187,7 +226,7 @@ export const exportPython = (graph: SignalGraph) => {
     "            **input_scope, 'x': x, 't': t, 'n': np.arange(len(x)), 'sampleRate': sample_rate,",
     "            'p0': params.get('p0', 1), 'p1': params.get('p1', 0), 'p2': params.get('p2', 0)",
     "        }), dtype=float)",
-    "    if kind == 'externalCommand': raise RuntimeError('External Command nodes require the SignalForge desktop runner protocol.')",
+    "    if kind == 'externalCommand': return run_external_command(inputs, params, params.get('__sampleRate', 1))",
     "    if kind == 'delay': return np.concatenate([np.zeros(int(params.get('samples', 0))), inputs[0]])",
     "    if kind == 'convolve': return np.convolve(inputs[0], inputs[1], mode='full')",
     "    if kind == 'correlate': return np.correlate(inputs[0], inputs[1], mode='full')",

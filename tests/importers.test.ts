@@ -8,6 +8,8 @@ describe("CSV signal import", () => {
     expect(imported.values).toEqual([1, 2, -3]);
     expect(imported.sampleRate).toBe(500);
     expect(imported.startTime).toBe(0);
+    expect(imported.mode).toBe("value-only");
+    expect(imported.message).toContain("value-only");
   });
 
   it("imports two-column CSV data as time,value and infers sample rate", () => {
@@ -16,6 +18,8 @@ describe("CSV signal import", () => {
     expect(imported.values).toEqual([1, 0, -1]);
     expect(imported.sampleRate).toBe(500);
     expect(imported.startTime).toBe(0.1);
+    expect(imported.mode).toBe("time-value");
+    expect(imported.message).toContain("time,value");
   });
 
   it("ignores SignalForge CSV metadata comments", () => {

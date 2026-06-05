@@ -2,6 +2,8 @@ export type ImportedCsvSignal = {
   values: number[];
   sampleRate?: number;
   startTime?: number;
+  mode: "value-only" | "time-value";
+  message: string;
   warnings: string[];
 };
 
@@ -38,7 +40,14 @@ export const parseCsvSignalData = (text: string, fallbackSampleRate = 1000): Imp
   if (!hasTimeColumn) {
     const values = numericRows.map((row) => row[0]).filter((value): value is number => value !== undefined);
     if (values.length === 0) throw new Error("CSV file does not contain a value column.");
-    return { values, sampleRate: fallbackSampleRate, startTime: 0, warnings };
+    return {
+      values,
+      sampleRate: fallbackSampleRate,
+      startTime: 0,
+      mode: "value-only",
+      message: `Imported ${values.length.toLocaleString()} value-only samples using ${fallbackSampleRate.toLocaleString()} Hz.`,
+      warnings
+    };
   }
 
   const pairs = numericRows
@@ -58,6 +67,8 @@ export const parseCsvSignalData = (text: string, fallbackSampleRate = 1000): Imp
     values: pairs.map((row) => row.value),
     sampleRate,
     startTime: Math.max(0, pairs[0].time),
+    mode: "time-value",
+    message: `Imported ${pairs.length.toLocaleString()} time,value rows; inferred ${sampleRate.toLocaleString()} Hz.`,
     warnings
   };
 };
