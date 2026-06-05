@@ -1,20 +1,26 @@
-# SignalForge MVP
+# SignalForge
 
 SignalForge is a local scientific workstation for building one-dimensional simulated signals with modular sources, operation nodes, timeline alignment, live previews, and reproducible exports.
 
-## Current MVP
+## Documentation
+
+See [docs/user-manual.md](docs/user-manual.md) for the full user manual, GUI guide, import/export notes, and External Command protocol.
+
+## Current Features
 
 - React + TypeScript + Vite web workstation, with an optional Tauri desktop shell.
 - Local Python/FastAPI analysis backend for SciPy-powered STFT and CWT.
 - One-dimensional discrete signal protocol.
 - Source modules: sine, square, triangle, Gaussian pulse, pulse, chirp, white noise, constant, and inline import array.
-- Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, and normalization.
+- Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, normalization, multi-input custom expressions, and external executable modules.
 - Analysis modules: FFT spectrum, RMS, quantile summary, distribution histogram, SNR, dominant frequency, bandwidth, STFT, and CWT.
 - Three-column workstation UI with module library, node canvas, timeline, parameter inspector, and time/frequency charts.
 - Analysis backend status indicator for SciPy-powered modules.
 - Project JSON, signal CSV, NumPy `.npy`, analysis CSV/JSON, and Python reproduction script exports.
 - STFT/CWT exports support both long-form CSV (`frequency,time,power`) and matrix CSV (`frequency\time` table).
 - Signal and analysis outputs include provenance metadata: source node, input nodes, params, sample rate, sample count, unit, and backend where relevant.
+- CSV import distinguishes `value-only` and `time,value` files and reports the chosen interpretation.
+- External Command nodes use `request.json` / `result.json` so packaged executables can act as signal-processing modules in the desktop shell.
 - The node canvas includes a clear action that removes all nodes and edges while preserving global sampling settings.
 
 ## Run

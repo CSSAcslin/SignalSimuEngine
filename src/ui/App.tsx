@@ -9,6 +9,7 @@ import {
   Database,
   Copy,
   Eye,
+  FileCode,
   FileJson,
   FlaskConical,
   Focus,
@@ -19,7 +20,6 @@ import {
   MousePointer2,
   MoreVertical,
   PanelRight,
-  Play,
   Plus,
   Repeat,
   Save,
@@ -2052,9 +2052,9 @@ export const App = () => {
             <Save size={15} />
             Save
           </button>
-          <button onClick={() => downloadText("signalforge-reproduce.py", exportPython({ ...graph, selectedNodeId }), "text/x-python")}>
-            <Play size={15} />
-            Python
+          <button onClick={() => downloadText("signalforge-reproduce.py", exportPython({ ...graph, selectedNodeId }), "text/x-python")} title="Export a Python reproduction script for the current node graph">
+            <FileCode size={15} />
+            Reproduce.py
           </button>
         </div>
         {csvImportMessage ? <div className="topbar-message">{csvImportMessage}</div> : null}
