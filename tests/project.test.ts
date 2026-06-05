@@ -45,4 +45,45 @@ describe("project JSON migration", () => {
     expect(serialized.metadata.backend.analysisServiceUrl).toBe("http://127.0.0.1:8765");
     expect(serialized.metadata.nodeCount).toBe(1);
   });
+
+  it("preserves external command node invocation parameters in project JSON", () => {
+    const graph = parseProjectJson(
+      JSON.stringify({
+        sampleRate: 1000,
+        samples: 1000,
+        nodes: [
+          { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, params: { values: [1] }, sampleRate: 1, length: 1 },
+          {
+            id: "external",
+            type: "operation",
+            kind: "externalCommand",
+            name: "External Command",
+            position: { x: 120, y: 80 },
+            timelineOffset: 0,
+            params: {
+              executablePath: "H:/tools/filter.exe",
+              arguments: "--input {input} --output {output}",
+              timeoutMs: 45000,
+              p0: 2
+            }
+          }
+        ],
+        edges: [{ id: "x-external", from: "x", to: "external" }]
+      })
+    );
+
+    const restored = parseProjectJson(serializeProjectGraph(graph));
+    const node = restored.nodes.find((item) => item.id === "external");
+
+    expect(node).toMatchObject({
+      type: "operation",
+      kind: "externalCommand",
+      params: {
+        executablePath: "H:/tools/filter.exe",
+        arguments: "--input {input} --output {output}",
+        timeoutMs: 45000,
+        p0: 2
+      }
+    });
+  });
 });

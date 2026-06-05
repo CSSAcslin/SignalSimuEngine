@@ -49,6 +49,7 @@ import {
   clampSelection,
   clampView,
   connectGraphNodes,
+  createExternalCommandRequest,
   createTimeTicks,
   createTimeFrequencyView,
   createValueTicks,
@@ -76,6 +77,7 @@ import {
   removeGraphNodes,
   createTimeFrequencyRequest,
   isTimeFrequencyNode,
+  runExternalCommandBackend,
   runTimeFrequencyBackend,
   sampleGraph,
   selectSignalWindow,
@@ -88,6 +90,8 @@ import {
   type OperationKind,
   type ParamValue,
   type AnalysisResult,
+  type ExternalCommandRequest,
+  type ExternalCommandSignalResult,
   type Signal,
   type SignalGraph,
   type SignalNode,
@@ -144,6 +148,29 @@ const createNodeFromDefinition = (definition: ModuleDefinition, index: number, s
     kind: definition.kind as OperationKind
   };
 };
+
+const externalCommandResultToSignal = (node: SignalNode, request: ExternalCommandRequest, result: ExternalCommandSignalResult): Signal => ({
+  id: node.id,
+  name: node.name,
+  sampleRate: request.sampleRate,
+  unit: result.unit ?? "a.u.",
+  time: result.values.map((_, index) => index / request.sampleRate),
+  values: result.values,
+  params: { ...node.params },
+  timelineOffset: node.timelineOffset,
+  provenance: {
+    nodeId: node.id,
+    nodeName: node.name,
+    nodeKind: node.kind,
+    inputNodeIds: request.inputs.map((input) => input.id),
+    params: { ...node.params },
+    sampleRate: request.sampleRate,
+    sampleCount: result.values.length,
+    unit: result.unit ?? "a.u.",
+    backend: "external-command",
+    warnings: result.warnings ?? []
+  }
+});
 
 const parseArray = (value: string) =>
   value
@@ -1532,19 +1559,34 @@ export const App = () => {
   });
   const [timeFrequencyResults, setTimeFrequencyResults] = useState<Record<string, AnalysisResult>>({});
   const [timeFrequencyRunningIds, setTimeFrequencyRunningIds] = useState<string[]>([]);
+  const [externalCommandSignals, setExternalCommandSignals] = useState<Record<string, Signal>>({});
+  const [externalCommandErrors, setExternalCommandErrors] = useState<Record<string, string>>({});
+  const [externalCommandRunningIds, setExternalCommandRunningIds] = useState<string[]>([]);
   const selectedNodeId = selectedNodeIds[selectedNodeIds.length - 1] ?? graph.selectedNodeId;
   const evaluation = useMemo(() => evaluateGraph({ ...graph, selectedNodeId }), [graph, selectedNodeId]);
+  const signalOverlay = useMemo(() => {
+    const signals = new Map(evaluation.signals);
+    Object.entries(externalCommandSignals).forEach(([id, signal]) => signals.set(id, signal));
+    return signals;
+  }, [evaluation.signals, externalCommandSignals]);
+  const errorOverlay = useMemo(() => {
+    const errors = new Map(evaluation.errors);
+    Object.keys(externalCommandSignals).forEach((id) => errors.delete(id));
+    externalCommandRunningIds.forEach((id) => errors.set(id, "External command running..."));
+    Object.entries(externalCommandErrors).forEach(([id, error]) => errors.set(id, error));
+    return errors;
+  }, [evaluation.errors, externalCommandErrors, externalCommandRunningIds, externalCommandSignals]);
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
-  const selectedSignal = selectedNodeId ? evaluation.signals.get(selectedNodeId) : undefined;
+  const selectedSignal = selectedNodeId ? signalOverlay.get(selectedNodeId) : undefined;
   const selectedAnalysis = selectedNodeId ? timeFrequencyResults[selectedNodeId] ?? evaluation.analysis.get(selectedNodeId) : undefined;
   const displayNodeId = graph.displayNodeId ?? selectedNodeId;
   const displayNode = graph.nodes.find((node) => node.id === displayNodeId);
-  const displaySignal = displayNodeId ? evaluation.signals.get(displayNodeId) : undefined;
+  const displaySignal = displayNodeId ? signalOverlay.get(displayNodeId) : undefined;
   const displayAnalysis = displayNodeId ? timeFrequencyResults[displayNodeId] ?? evaluation.analysis.get(displayNodeId) : undefined;
   const displaySpectrum = displayAnalysis?.type === "spectrum" ? { frequency: displayAnalysis.frequency, magnitude: displayAnalysis.magnitude } : undefined;
   const compareSignals = selectedNodeIds
     .filter((id) => id !== displayNodeId)
-    .map((id) => evaluation.signals.get(id))
+    .map((id) => signalOverlay.get(id))
     .filter((signal): signal is Signal => Boolean(signal));
   const cursorReadout = readSignalAtTime(displaySignal, currentTime);
   const sampleRate = graphSampleRate(graph);
@@ -1586,6 +1628,9 @@ export const App = () => {
   useEffect(() => {
     setTimeFrequencyResults({});
     setTimeFrequencyRunningIds([]);
+    setExternalCommandSignals({});
+    setExternalCommandErrors({});
+    setExternalCommandRunningIds([]);
   }, [graph.nodes, graph.edges, graph.sampleRate, graph.samples]);
 
   useEffect(() => {
@@ -1646,6 +1691,48 @@ export const App = () => {
       });
     });
   }, [displayNodeId, evaluation, graph.edges, graph.nodes, selectedNodeId, timeFrequencyResults, timeFrequencyRunningIds]);
+
+  useEffect(() => {
+    const targetIds = Array.from(new Set([selectedNodeId, displayNodeId].filter((id): id is string => Boolean(id))));
+    targetIds.forEach((nodeId) => {
+      const node = graph.nodes.find((item) => item.id === nodeId);
+      if (!node || node.type !== "operation" || node.kind !== "externalCommand") return;
+      if (externalCommandSignals[nodeId] || externalCommandErrors[nodeId] || externalCommandRunningIds.includes(nodeId)) return;
+      const inputSignals = graph.edges
+        .filter((edge) => edge.to === nodeId)
+        .map((edge) => signalOverlay.get(edge.from))
+        .filter((signal): signal is Signal => Boolean(signal));
+      if (inputSignals.length === 0) return;
+
+      const request = createExternalCommandRequest(node, inputSignals);
+      setExternalCommandRunningIds((ids) => (ids.includes(nodeId) ? ids : [...ids, nodeId]));
+      setExternalCommandErrors((errors) => {
+        const next = { ...errors };
+        delete next[nodeId];
+        return next;
+      });
+      void runExternalCommandBackend(request).then((result) => {
+        if (result.type === "external-command-error") {
+          setExternalCommandErrors((errors) => ({ ...errors, [nodeId]: result.message }));
+        } else {
+          setExternalCommandSignals((signals) => ({
+            ...signals,
+            [nodeId]: externalCommandResultToSignal(node, request, result)
+          }));
+        }
+        setExternalCommandRunningIds((ids) => ids.filter((id) => id !== nodeId));
+      });
+    });
+  }, [
+    displayNodeId,
+    externalCommandErrors,
+    externalCommandRunningIds,
+    externalCommandSignals,
+    graph.edges,
+    graph.nodes,
+    selectedNodeId,
+    signalOverlay
+  ]);
 
   useEffect(() => {
     if (displayAnalysis?.type === "spectrum") setChartMode("spectrum");
@@ -1981,18 +2068,18 @@ export const App = () => {
                 <Trash2 size={14} />
                 Clear
               </button>
-              <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length} />
+              <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length + externalCommandRunningIds.length} />
               <div className="status-chip">
                 <Sparkles size={14} />
-                {evaluation.errors.size === 0 ? `DAG valid / ${selectedNodeIds.length} selected` : `${evaluation.errors.size} error(s) / ${selectedNodeIds.length} selected`}
+                {errorOverlay.size === 0 ? `DAG valid / ${selectedNodeIds.length} selected` : `${errorOverlay.size} error(s) / ${selectedNodeIds.length} selected`}
               </div>
             </div>
           </div>
           <NodeCanvas
             graph={graph}
             selectedNodeIds={selectedNodeIds}
-            errors={evaluation.errors}
-            signals={evaluation.signals}
+            errors={errorOverlay}
+            signals={signalOverlay}
             previewView={visibleSelection}
             canvasView={canvasView}
             connectFromId={connectFromId}
@@ -2125,9 +2212,9 @@ export const App = () => {
         <Inspector
           node={selectedNode}
           graph={graph}
-          signals={evaluation.signals}
+          signals={signalOverlay}
           signal={selectedSignal}
-          error={selectedNodeId ? evaluation.errors.get(selectedNodeId) : undefined}
+          error={selectedNodeId ? errorOverlay.get(selectedNodeId) : undefined}
           sampleRate={sampleRate}
           totalDuration={duration}
           onChangeNode={updateNode}
