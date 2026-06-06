@@ -213,7 +213,7 @@ const moduleIconMap: Record<string, LucideIcon | string> = {
   customSource: Braces,
   add: Plus,
   subtract: Minus,
-  multiply: "×",
+  multiply: "x",
   scale: SlidersHorizontal,
   customExpression: Braces,
   externalCommand: Terminal,
@@ -234,7 +234,7 @@ const moduleIconMap: Record<string, LucideIcon | string> = {
 
 const ModuleIcon = ({ kind, size = 16 }: { kind: string; size?: number }) => {
   const icon = moduleIconMap[kind] ?? Sigma;
-  if (typeof icon === "string") return <span className="module-icon-text">{icon}</span>;
+  if (typeof icon === "string") return <span className={`module-icon-text ${icon.length > 2 ? "compact" : ""}`}>{icon}</span>;
   const Icon = icon;
   return <Icon size={size} />;
 };

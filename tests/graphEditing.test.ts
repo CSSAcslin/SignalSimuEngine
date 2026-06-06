@@ -125,6 +125,31 @@ describe("graph editing helpers", () => {
     expect(node("a4")?.position.y).toBeGreaterThan(node("a1")?.position.y ?? 0);
   });
 
+  it("places unconnected layout zones below connected networks", () => {
+    const laidOut = autoLayoutGraph({
+      nodes: [
+        { id: "s1", type: "source", kind: "sine", name: "S1", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "op1", type: "operation", kind: "multiply", name: "OP1", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "out1", type: "operation", kind: "normalize", name: "OUT1", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "loose-source", type: "source", kind: "constant", name: "Loose Source", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "loose-op", type: "operation", kind: "scale", name: "Loose OP", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} },
+        { id: "loose-analysis", type: "operation", kind: "fft", name: "Loose FFT", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} }
+      ],
+      edges: [
+        { id: "edge-s1-op1", from: "s1", to: "op1" },
+        { id: "edge-op1-out1", from: "op1", to: "out1" }
+      ]
+    });
+    const node = (id: string) => laidOut.nodes.find((item) => item.id === id);
+    const connectedMaxY = Math.max(node("s1")?.position.y ?? 0, node("op1")?.position.y ?? 0, node("out1")?.position.y ?? 0);
+
+    expect(node("loose-source")?.position.y).toBeGreaterThan(connectedMaxY);
+    expect(node("loose-op")?.position.y).toBeGreaterThan(connectedMaxY);
+    expect(node("loose-analysis")?.position.y).toBeGreaterThan(connectedMaxY);
+    expect(node("loose-source")?.position.x).toBeLessThan(node("loose-op")?.position.x ?? 0);
+    expect(node("loose-op")?.position.x).toBeLessThan(node("loose-analysis")?.position.x ?? 0);
+  });
+
   it("pins a display target independently from selected node", () => {
     const pinned = setDisplayNode({ ...graph, selectedNodeId: "a" }, "c");
 

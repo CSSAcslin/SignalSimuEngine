@@ -655,14 +655,23 @@ button {
 }
 
 .module-icon-text {
-  display: inline-flex;
+  display: grid;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
+  width: 16px;
+  height: 16px;
   color: currentColor;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  transform: translateY(0.5px);
+}
+
+.module-icon-text.compact {
+  font-size: 7px;
+  letter-spacing: -0.2px;
 }
 
 .graph-node.operation .node-icon {

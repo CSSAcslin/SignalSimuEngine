@@ -162,6 +162,9 @@ export const moveGraphNodes = (graph: SignalGraph, nodeIds: string[], delta: { x
 };
 
 export const autoLayoutGraph = (graph: SignalGraph): SignalGraph => {
+  const columnGap = 270;
+  const rowGap = 132;
+  const origin = { x: 76, y: 84 };
   const depth = new Map<string, number>();
   graph.nodes.forEach((node) => depth.set(node.id, 0));
 
@@ -176,12 +179,29 @@ export const autoLayoutGraph = (graph: SignalGraph): SignalGraph => {
   const unconnectedNodes = graph.nodes.filter((node) => !connectedIds.has(node.id));
   const zoneNodes = new Set(unconnectedNodes.map((node) => node.id));
   const lanes = new Map<number, number>();
+  const connectedPositions = new Map<string, { x: number; y: number }>();
+  let maxConnectedY = origin.y - rowGap;
+  graph.nodes
+    .filter((node) => connectedIds.has(node.id))
+    .forEach((node) => {
+      const column = depth.get(node.id) ?? 0;
+      const lane = lanes.get(column) ?? 0;
+      lanes.set(column, lane + 1);
+      const position = {
+        x: origin.x + column * columnGap,
+        y: origin.y + lane * rowGap
+      };
+      connectedPositions.set(node.id, position);
+      maxConnectedY = Math.max(maxConnectedY, position.y);
+    });
+
+  const zoneStartY = connectedPositions.size > 0 ? maxConnectedY + rowGap + 40 : origin.y;
   const zoneLanes = new Map<string, number>();
   const zoneConfig = (node: SignalNode) => {
     const definition = getModuleDefinition(node.kind);
-    if (node.type === "source") return { key: "source", baseX: 76, columns: 2 };
-    if (definition?.type === "analysis") return { key: "analysis", baseX: 76 + 5 * 270, columns: 3 };
-    return { key: "operation", baseX: 76 + 2 * 270, columns: 3 };
+    if (node.type === "source") return { key: "source", baseX: origin.x, columns: 2 };
+    if (definition?.type === "analysis") return { key: "analysis", baseX: origin.x + 5 * columnGap, columns: 3 };
+    return { key: "operation", baseX: origin.x + 2 * columnGap, columns: 3 };
   };
 
   return {
@@ -194,20 +214,14 @@ export const autoLayoutGraph = (graph: SignalGraph): SignalGraph => {
         return {
           ...node,
           position: {
-            x: zone.baseX + (lane % zone.columns) * 270,
-            y: 84 + Math.floor(lane / zone.columns) * 132
+            x: zone.baseX + (lane % zone.columns) * columnGap,
+            y: zoneStartY + Math.floor(lane / zone.columns) * rowGap
           }
         };
       }
-      const column = depth.get(node.id) ?? 0;
-      const lane = lanes.get(column) ?? 0;
-      lanes.set(column, lane + 1);
       return {
         ...node,
-        position: {
-          x: 76 + column * 270,
-          y: 84 + lane * 132
-        }
+        position: connectedPositions.get(node.id) ?? node.position
       };
     })
   };
