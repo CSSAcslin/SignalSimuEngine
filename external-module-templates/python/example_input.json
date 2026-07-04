@@ -1,0 +1,24 @@
+{
+  "nodeId": "externalCommand-python-demo",
+  "name": "Python Gain Demo",
+  "executablePath": "python",
+  "arguments": "--input {input} --output {output}",
+  "timeoutMs": 30000,
+  "sampleRate": 1000,
+  "params": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 0
+  },
+  "inputs": [
+    {
+      "id": "input-0",
+      "name": "Input Signal",
+      "sampleRate": 1000,
+      "unit": "a.u.",
+      "time": [0, 0.001, 0.002, 0.003],
+      "values": [0, 0.25, 0.5, 1]
+    }
+  ]
+}
+

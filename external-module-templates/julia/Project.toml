@@ -1,0 +1,7 @@
+name = "SignalForgeExternalModuleTemplate"
+uuid = "8ab9280b-4c0f-4d6d-9c60-3e1e6e91d7a1"
+version = "1.0.0"
+
+[deps]
+JSON3 = "0f8b85d8-7281-11e9-16c2-33d1fb704751"
+

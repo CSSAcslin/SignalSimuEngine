@@ -30,6 +30,7 @@ export type OperationKind =
   | "snr"
   | "dominantFrequency"
   | "bandwidth"
+  | "secondOrderCorrelation"
   | "stft"
   | "cwt";
 

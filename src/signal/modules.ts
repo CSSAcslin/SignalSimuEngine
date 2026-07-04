@@ -265,6 +265,48 @@ export const moduleDefinitions: ModuleDefinition[] = [
     params: [{ key: "threshold", label: "Threshold", type: "number", defaultValue: 0.5, min: 0, max: 1, step: 0.05 }]
   },
   {
+    kind: "secondOrderCorrelation",
+    type: "analysis",
+    outputType: "scalar",
+    label: "G2 Correlation",
+    description: "Normalized second-order auto/cross correlation at a fixed lag or over time.",
+    inputCount: "many",
+    params: [
+      {
+        key: "correlationType",
+        label: "Correlation Type",
+        type: "select",
+        defaultValue: "auto",
+        options: [
+          { label: "Autocorrelation", value: "auto" },
+          { label: "Cross-correlation", value: "cross" }
+        ]
+      },
+      {
+        key: "outputMode",
+        label: "Output Mode",
+        type: "select",
+        defaultValue: "averageAtLag",
+        options: [
+          { label: "Average at Lag", value: "averageAtLag" },
+          { label: "Curve over Time", value: "curveOverTime" }
+        ]
+      },
+      {
+        key: "normalization",
+        label: "Normalization",
+        type: "select",
+        defaultValue: "normalized",
+        options: [
+          { label: "Normalized g2", value: "normalized" },
+          { label: "Raw product", value: "raw" }
+        ]
+      },
+      { key: "lagSamples", label: "Lag", type: "number", defaultValue: 0, min: 0, step: 1, unit: "samples" },
+      { key: "averagePoints", label: "Average Points", type: "number", defaultValue: 0, min: 0, step: 1, unit: "samples" }
+    ]
+  },
+  {
     kind: "stft",
     type: "analysis",
     outputType: "time-frequency",

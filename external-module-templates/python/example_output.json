@@ -1,0 +1,15 @@
+{
+  "type": "signal",
+  "values": [0, 0.5, 1, 2],
+  "unit": "a.u.",
+  "warnings": [],
+  "metadata": {
+    "module": "python-gain-template",
+    "version": "1.0.0",
+    "operation": "output = p0 * input_0",
+    "gain": 2,
+    "inputId": "input-0",
+    "sampleRate": 1000
+  }
+}
+

@@ -228,6 +228,7 @@ const moduleIconMap: Record<string, LucideIcon | string> = {
   snr: "SNR",
   dominantFrequency: Hash,
   bandwidth: Maximize2,
+  secondOrderCorrelation: "G2",
   stft: "STFT",
   cwt: "CWT"
 };
@@ -1407,6 +1408,11 @@ const Inspector = ({
   const outputLabel = signal ? "Signal" : analysis ? (analysis.type === "scalar" ? "Scalar analysis" : analysis.type === "spectrum" ? "Spectrum analysis" : "Time-frequency analysis") : "Unavailable";
   const provenance = analysis?.provenance ?? signal?.provenance;
   const customInputRows = node?.kind === "customExpression" ? createCustomExpressionInputRows(graph, node.id, signals) : [];
+  const firstInputSignal =
+    node && node.type === "operation"
+      ? signals.get(graph.edges.find((edge) => edge.to === node.id)?.from ?? "")
+      : undefined;
+  const effectiveSampleRate = firstInputSignal?.sampleRate ?? sampleRate;
 
   return (
     <aside className="inspector">
@@ -1453,6 +1459,10 @@ const Inspector = ({
           )}
           {definition?.params.map((param) => {
             const value = node.params[param.key] ?? param.defaultValue;
+            const lagSeconds =
+              node.kind === "secondOrderCorrelation" && param.key === "lagSamples"
+                ? Math.max(0, Math.floor(typeof value === "number" ? value : Number(value) || 0)) / Math.max(effectiveSampleRate, 1e-12)
+                : undefined;
             return (
               <label className="field" key={param.key}>
                 <span>
@@ -1487,6 +1497,11 @@ const Inspector = ({
                     onChange={(event) => onChangeNode({ ...node, params: { ...node.params, [param.key]: Number(event.target.value) } })}
                   />
                 )}
+                {lagSeconds !== undefined ? (
+                  <small className="field-note">
+                    {formatValue(lagSeconds)} s @ {formatValue(effectiveSampleRate)} Hz
+                  </small>
+                ) : null}
               </label>
             );
           })}

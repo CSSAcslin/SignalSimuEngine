@@ -1,0 +1,3 @@
+# The Python template uses only the standard library.
+# Add project-specific dependencies here if your module needs them.
+

@@ -421,6 +421,105 @@ describe("operation modules", () => {
     expect(result.analysis.get("cwt")).toMatchObject({ type: "time-frequency-pending", method: "CWT", status: "pending" });
   });
 
+  it("computes normalized second-order autocorrelation as a scalar at a fixed lag", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 3, params: { values: [1, 2, 3] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "G2",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "auto", outputMode: "averageAtLag", lagSamples: 1 }
+        }
+      ],
+      edges: [{ id: "x-g2", from: "x", to: "g2" }]
+    };
+
+    const analysis = evaluateGraph(graph).analysis.get("g2");
+
+    expect(analysis?.type).toBe("scalar");
+    expect(analysis?.type === "scalar" ? analysis.value : undefined).toBeCloseTo(1);
+    expect(analysis?.params).toMatchObject({ lagSamples: 1, lagSeconds: 1 });
+  });
+
+  it("computes normalized second-order cross-correlation as a time curve", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 2, length: 3, params: { values: [1, 2, 3] } },
+        { id: "y", type: "source", kind: "import", name: "Y", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 2, length: 3, params: { values: [2, 4, 6] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "G2 Curve",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "cross", outputMode: "curveOverTime", lagSamples: 0 }
+        }
+      ],
+      edges: [
+        { id: "x-g2", from: "x", to: "g2" },
+        { id: "y-g2", from: "y", to: "g2" }
+      ]
+    };
+
+    const signal = evaluateGraph(graph).signals.get("g2");
+
+    expect(signal?.unit).toBe("g2");
+    expect(signal?.values).toEqual([0.25, 1, 2.25]);
+    expect(signal?.time).toEqual([0, 0.5, 1]);
+  });
+
+  it("limits second-order correlation averaging to the requested point count", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 4, params: { values: [1, 2, 3, 4] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "Limited G2",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "auto", outputMode: "averageAtLag", normalization: "raw", lagSamples: 1, averagePoints: 2 }
+        }
+      ],
+      edges: [{ id: "x-g2", from: "x", to: "g2" }]
+    };
+
+    const analysis = evaluateGraph(graph).analysis.get("g2");
+
+    expect(analysis?.type).toBe("scalar");
+    expect(analysis?.type === "scalar" ? analysis.value : undefined).toBe(4);
+    expect(analysis?.params).toMatchObject({ averagePoints: 2, usedPoints: 2 });
+  });
+  it("computes raw second-order correlation without mean normalization", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 3, params: { values: [1, 2, 3] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "Raw G2",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "auto", outputMode: "averageAtLag", normalization: "raw", lagSamples: 1 }
+        }
+      ],
+      edges: [{ id: "x-g2", from: "x", to: "g2" }]
+    };
+
+    const analysis = evaluateGraph(graph).analysis.get("g2");
+
+    expect(analysis?.type).toBe("scalar");
+    expect(analysis?.type === "scalar" ? analysis.value : undefined).toBe(4);
+    expect(analysis?.type === "scalar" ? analysis.unit : undefined).toBe("a.u.^2");
+  });
+
   it("computes quantile summary analysis with mean min max and arbitrary percentile", () => {
     const graph: SignalGraph = {
       nodes: [

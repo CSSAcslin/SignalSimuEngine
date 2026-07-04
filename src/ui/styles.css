@@ -373,6 +373,17 @@ button {
   font-weight: 760;
 }
 
+.module-card .module-icon-text {
+  display: grid;
+  color: currentColor;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.module-card .module-icon-text.compact {
+  font-size: 10px;
+}
+
 .module-card small {
   display: block;
   margin-top: 4px;
@@ -670,8 +681,8 @@ button {
 }
 
 .module-icon-text.compact {
-  font-size: 7px;
-  letter-spacing: -0.2px;
+  font-size: 10px;
+  letter-spacing: -0.3px;
 }
 
 .graph-node.operation .node-icon {
@@ -1713,7 +1724,8 @@ button {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   border: 1px solid #cbdce6;
   border-radius: 7px;
@@ -1726,6 +1738,11 @@ button {
 .field textarea {
   min-height: 76px;
   resize: vertical;
+}
+
+.field-note {
+  color: #64748b;
+  font-size: 11px;
 }
 
 .error-box {

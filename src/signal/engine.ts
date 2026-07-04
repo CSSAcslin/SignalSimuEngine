@@ -86,7 +86,7 @@ const evaluateExpressionValue = (
   }
 };
 
-const nodeProvenance = (node: SignalNode, inputNodeIds: string[], sampleRate?: number, sampleCount?: number, unit?: string) => ({
+const nodeProvenance = (node: SignalNode, inputNodeIds: string[], sampleRate?: number, sampleCount?: number, unit?: string, metadata?: Record<string, unknown>) => ({
   nodeId: node.id,
   nodeName: node.name,
   nodeKind: node.kind,
@@ -94,7 +94,8 @@ const nodeProvenance = (node: SignalNode, inputNodeIds: string[], sampleRate?: n
   params: { ...node.params },
   sampleRate,
   sampleCount,
-  unit
+  unit,
+  metadata
 });
 
 const seededRandom = (seed = 1) => {
@@ -386,6 +387,78 @@ const occupiedBandwidth = (signal: Signal, threshold: number) => {
   return bins[bins.length - 1] - bins[0];
 };
 
+const secondOrderCorrelation = (node: OperationNode, inputs: Signal[]): { signal?: Signal; analysis?: AnalysisResult; error?: string } => {
+  const correlationType = typeof node.params.correlationType === "string" ? node.params.correlationType : "auto";
+  const outputMode = typeof node.params.outputMode === "string" ? node.params.outputMode : "averageAtLag";
+  const normalization = typeof node.params.normalization === "string" ? node.params.normalization : "normalized";
+  const lagSamples = Math.max(0, Math.floor(asNumber(node.params.lagSamples, 0)));
+  const requestedAveragePoints = Math.max(0, Math.floor(asNumber(node.params.averagePoints, 0)));
+  const left = inputs[0];
+  const right = correlationType === "cross" ? inputs[1] : inputs[0];
+  if (!left) return { error: "G2 correlation requires at least one input." };
+  if (correlationType === "cross" && !right) return { error: "G2 cross-correlation requires two inputs." };
+  if (!right) return { error: "G2 correlation has no comparison input." };
+
+  const overlapLength = Math.min(left.values.length, right.values.length - lagSamples);
+  const length = requestedAveragePoints > 0 ? Math.min(overlapLength, requestedAveragePoints) : overlapLength;
+  if (length <= 0) return { error: "Lag is outside the overlapping signal range." };
+
+  const normalized = normalization !== "raw";
+  const leftMean = meanValue(left.values);
+  const rightMean = meanValue(right.values);
+  const denominator = normalized ? leftMean * rightMean : 1;
+  if (normalized && Math.abs(denominator) < 1e-12) return { error: "G2 normalization requires non-zero input means." };
+
+  const values = Array.from({ length }, (_, index) => (left.values[index] * right.values[index + lagSamples]) / denominator);
+  const lagSeconds = lagSamples / Math.max(left.sampleRate, 1e-12);
+  const params = { ...node.params, correlationType, outputMode, normalization: normalized ? "normalized" : "raw", lagSamples, lagSeconds, averagePoints: requestedAveragePoints, usedPoints: length };
+  const inputNodeIds = inputs.slice(0, correlationType === "cross" ? 2 : 1).map((signal) => signal.provenance?.nodeId ?? signal.id);
+  const unit = normalized ? "g2" : correlationType === "cross" ? `${left.unit} * ${right.unit}` : `${left.unit}^2`;
+  const labelPrefix = normalized ? "g2" : "G2";
+
+  if (outputMode === "curveOverTime") {
+    return {
+      signal: {
+        id: node.id,
+        name: node.name,
+        sampleRate: left.sampleRate,
+        unit,
+        time: left.time.slice(0, length),
+        values,
+        params,
+        provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, length, unit, {
+          correlationType,
+          outputMode,
+          normalization: normalized ? "normalized" : "raw",
+          lagSamples,
+          lagSeconds,
+          averagePoints: requestedAveragePoints,
+          usedPoints: length
+        })
+      }
+    };
+  }
+
+  return {
+    analysis: {
+      type: "scalar",
+      id: node.id,
+      name: node.name,
+      label: correlationType === "cross" ? `${labelPrefix} Cross-correlation` : `${labelPrefix} Autocorrelation`,
+      value: meanValue(values),
+      unit,
+      params,
+      provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, length, unit, {
+        correlationType,
+        outputMode,
+        normalization: normalized ? "normalized" : "raw",
+        lagSamples,
+        lagSeconds
+      })
+    }
+  };
+};
+
 const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signal; spectrum?: Spectrum; analysis?: AnalysisResult; error?: string } => {
   const name = node.name;
   const kind = node.kind as OperationKind;
@@ -474,6 +547,8 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
       return { analysis: scalarAnalysis(node, inputs, "Dominant Frequency", dominantFrequency(inputs[0]), "Hz") };
     case "bandwidth":
       return { analysis: scalarAnalysis(node, inputs, "Bandwidth", occupiedBandwidth(inputs[0], asNumber(node.params.threshold, 0.5)), "Hz") };
+    case "secondOrderCorrelation":
+      return secondOrderCorrelation(node, inputs);
     case "stft":
       return {
         analysis: {
