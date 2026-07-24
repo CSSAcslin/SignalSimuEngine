@@ -45,3 +45,6 @@ The web workspace talks to the local analysis service at `http://127.0.0.1:8765`
 The top bar shows the local analysis backend state. If it is offline, STFT/CWT nodes will show an actionable message and the web UI can keep running while you start `pnpm backend:dev`.
 
 Project JSON includes `SignalForge 1D Signal Protocol` metadata. CSV exports include comment headers beginning with `#`; SignalForge's CSV importer ignores those headers when re-importing exported signals.
+
+
+Made with codex

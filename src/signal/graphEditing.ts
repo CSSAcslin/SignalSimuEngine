@@ -1,5 +1,6 @@
 import type { SignalGraph, SignalNode } from "./types";
 import { getModuleDefinition } from "./modules";
+import { createRandomSeed, isRandomSourceKind } from "./random";
 
 const edgeId = (from: string, to: string) => `edge-${from}-${to}`;
 
@@ -102,6 +103,7 @@ export const duplicateGraphNode = (graph: SignalGraph, nodeId: string): SignalGr
     position: { x: node.position.x + 32, y: node.position.y + 32 },
     params: { ...node.params }
   } as SignalNode;
+  if (copy.type === "source" && isRandomSourceKind(copy.kind)) copy.seed = createRandomSeed();
 
   return {
     ...graph,
@@ -118,13 +120,15 @@ export const duplicateGraphNodes = (graph: SignalGraph, nodeIds: string[]): Sign
     .map((node) => {
       const copyId = `${node.id}-copy-${graph.nodes.filter((item) => item.id.startsWith(`${node.id}-copy`)).length + idMap.size + 1}`;
       idMap.set(node.id, copyId);
-      return {
+      const copy = {
         ...node,
         id: copyId,
         name: `${node.name} Copy`,
         position: { x: node.position.x + 32, y: node.position.y + 32 },
         params: { ...node.params }
       } as SignalNode;
+      if (copy.type === "source" && isRandomSourceKind(copy.kind)) copy.seed = createRandomSeed();
+      return copy;
     });
 
   const copiedEdges = graph.edges

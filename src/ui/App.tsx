@@ -20,7 +20,6 @@ import {
   Hash,
   Maximize2,
   Minus,
-  MousePointer2,
   MoreVertical,
   PanelRight,
   Plus,
@@ -51,6 +50,7 @@ import type { LucideIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCustomExpressionInputRows, isEditableEventTarget } from "./inspectorHelpers";
+import { scientificPlotPalette, ScientificHistogramPlot, ScientificSeriesPlot, ScientificSpectrumPlot } from "./ScientificPlot";
 import {
   autoLayoutGraph,
   canConnectGraphNodes,
@@ -58,6 +58,7 @@ import {
   clampSelection,
   clampView,
   connectGraphNodes,
+  createRandomSeed,
   createExternalCommandRequest,
   createTimeTicks,
   createTimeFrequencyView,
@@ -66,6 +67,7 @@ import {
   duplicateGraphNode,
   duplicateGraphNodes,
   evaluateGraph,
+  fftSpectrum,
   exportAnalysisCsv,
   exportAnalysisJson,
   exportCsv,
@@ -85,6 +87,9 @@ import {
   removeGraphNode,
   removeGraphNodes,
   createTimeFrequencyRequest,
+  createAnalysisPlotModel,
+  createSignalPlotModel,
+  isRandomSourceKind,
   isTimeFrequencyNode,
   runExternalCommandBackend,
   runTimeFrequencyBackend,
@@ -106,6 +111,7 @@ import {
   type SignalNode,
   type SourceKind,
   type Spectrum,
+  type ScientificPlotModel,
   type TimeView,
   zoomValueRange,
   zoomView
@@ -147,7 +153,7 @@ const createNodeFromDefinition = (definition: ModuleDefinition, index: number, s
       kind: definition.kind as SourceKind,
       sampleRate,
       length: samples,
-      seed: definition.kind === "noise" ? Math.floor(Math.random() * 10000) : undefined
+      seed: isRandomSourceKind(definition.kind as SourceKind) ? createRandomSeed() : undefined
     };
   }
 
@@ -208,6 +214,7 @@ const moduleIconMap: Record<string, LucideIcon | string> = {
   gaussianPulse: SquareActivity,
   chirp: Sparkles,
   noise: Shuffle,
+  photonCounts: CircleDot,
   constant: "C",
   import: Upload,
   customSource: Braces,
@@ -313,9 +320,11 @@ const SignalLine = ({
   const cursorTop = cursorValue === undefined ? undefined : 88 - ((cursorValue - min) / span) * 76;
   const compareColors = ["#22c55e", "#f59e0b", "#a855f7", "#ef4444"];
   const [valueDragStart, setValueDragStart] = useState<{ y: number; range: ValueRange }>();
+  const visibleSpan = Math.max(timeView.end - timeView.start, 0.001);
   const path = points
     .map((point, index) => {
-      const x = (index / Math.max(points.length - 1, 1)) * 100;
+      const pointTime = windowedSignal.time[point.index] ?? windowedSignal.time[index] ?? timeView.start;
+      const x = ((pointTime - timeView.start) / visibleSpan) * 100;
       const y = 88 - ((point.value - min) / span) * 76;
       return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
     })
@@ -368,7 +377,8 @@ const SignalLine = ({
           const comparePoints = downsample(item.values, maxPreviewPoints);
           const comparePath = comparePoints
             .map((point, index) => {
-              const x = (index / Math.max(comparePoints.length - 1, 1)) * 100;
+              const pointTime = item.time[point.index] ?? item.time[index] ?? timeView.start;
+              const x = ((pointTime - timeView.start) / visibleSpan) * 100;
               const y = 88 - ((point.value - min) / span) * 76;
               return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
             })
@@ -483,31 +493,8 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
   }
 
   if (analysis.type === "distribution") {
-    const maxCount = Math.max(...analysis.counts, 1);
-    const min = analysis.binEdges[0] ?? 0;
-    const max = analysis.binEdges[analysis.binEdges.length - 1] ?? min;
-    return (
-      <div className="axis-chart distribution-chart" role="img" aria-label={`${analysis.name} amplitude distribution`}>
-        <div className="spectrum-bars">
-          {analysis.counts.map((count, index) => (
-            <span
-              key={index}
-              className={count === maxCount ? "peak" : ""}
-              title={`${formatValue(analysis.binEdges[index] ?? 0)} - ${formatValue(analysis.binEdges[index + 1] ?? 0)} ${analysis.unit}, count ${count}`}
-              style={{ height: `${Math.max(4, (count / maxCount) * 100)}%` }}
-            />
-          ))}
-        </div>
-        <div className="x-axis">
-          <span>{formatValue(min)} {analysis.unit}</span>
-          <span>{formatValue((min + max) / 2)} {analysis.unit}</span>
-          <span>{formatValue(max)} {analysis.unit}</span>
-        </div>
-        <div className="chart-legend spectrum-peak">
-          <span><i />{analysis.counts.length} bins / {analysis.counts.reduce((sum, count) => sum + count, 0).toLocaleString()} samples</span>
-        </div>
-      </div>
-    );
+    const model = createAnalysisPlotModel(analysis);
+    return model.kind === "histogram" ? <ScientificHistogramPlot model={model} /> : <div className="chart-empty">Invalid distribution result</div>;
   }
 
   if (analysis.type === "time-frequency-pending" || analysis.type === "time-frequency-error") {
@@ -535,6 +522,7 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
           <em>Peak {formatValue(view.peak.value)} {analysis.unit} @ {formatValue(view.peak.frequency)} Hz, {formatValue(view.peak.time)} s</em>
         </div>
         <div className="time-frequency-chart">
+          <div className="tf-y-title">Frequency (Hz)</div>
           <div className="tf-y-axis">
             <span>{view.yLabels[1]}</span>
             <span>{view.yLabels[0]}</span>
@@ -548,9 +536,11 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
               />
             ))}
           </div>
+          <div className="tf-colorbar"><span>High</span><i /><span>Low</span></div>
           <div className="tf-x-axis">
             {view.xLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
           </div>
+          <div className="tf-x-title">Time (s)</div>
         </div>
         <div className="chart-legend spectrum-peak">
           <span><i />Intensity is downsampled for preview; exports keep full-resolution {analysis.unit} values.</span>
@@ -1458,9 +1448,20 @@ const Inspector = ({
             </div>
           )}
           {definition?.params.map((param) => {
-            const value = node.params[param.key] ?? param.defaultValue;
+            const storedG2OutputMode = String(node.params.outputMode ?? "averageAtLag");
+            const g2OutputMode = storedG2OutputMode === "curveOverTime" ? "curveOverLag" : storedG2OutputMode;
+            if (node.kind === "photonCounts" && param.key === "coherenceTime" && String(node.params.lightStatistics ?? "coherent") !== "thermal") return null;
+            if (node.kind === "secondOrderCorrelation") {
+              if (g2OutputMode === "curveOverLag" && param.key === "lagSamples") return null;
+              if (g2OutputMode !== "curveOverLag" && param.key === "maxLagSamples") return null;
+            }
+            const storedValue = node.params[param.key] ?? param.defaultValue;
+            const value =
+              node.kind === "secondOrderCorrelation" && param.key === "outputMode" && storedValue === "curveOverTime"
+                ? "curveOverLag"
+                : storedValue;
             const lagSeconds =
-              node.kind === "secondOrderCorrelation" && param.key === "lagSamples"
+              node.kind === "secondOrderCorrelation" && (param.key === "lagSamples" || param.key === "maxLagSamples")
                 ? Math.max(0, Math.floor(typeof value === "number" ? value : Number(value) || 0)) / Math.max(effectiveSampleRate, 1e-12)
                 : undefined;
             return (
@@ -1623,11 +1624,13 @@ export const App = () => {
   const [canvasView, setCanvasView] = useState({ x: 0, y: 0, zoom: 1 });
   const [chartMode, setChartMode] = useState<"time" | "spectrum">("time");
   const [spectrumMode, setSpectrumMode] = useState<"linear" | "db">("linear");
+  const [frequencyScale, setFrequencyScale] = useState<"linear" | "log">("linear");
   const [plotPreviewPoints, setPlotPreviewPoints] = useState(520);
   const [timeView, setTimeView] = useState<TimeView>({ start: 0, end: 1 });
   const [timeSelection, setTimeSelection] = useState<TimeView>({ start: 0, end: 1 });
   const [currentTime, setCurrentTime] = useState(0);
-  const [yRange, setYRange] = useState<ValueRange>();
+  const [plotViews, setPlotViews] = useState<Record<string, { x?: ValueRange; y?: ValueRange }>>({});
+  const [plotCursorXs, setPlotCursorXs] = useState<Record<string, number>>({});
   const [undoStack, setUndoStack] = useState<SignalGraph[]>([]);
   const [redoStack, setRedoStack] = useState<SignalGraph[]>([]);
   const [csvImportMessage, setCsvImportMessage] = useState<string>();
@@ -1661,17 +1664,67 @@ export const App = () => {
   const displayNode = graph.nodes.find((node) => node.id === displayNodeId);
   const displaySignal = displayNodeId ? signalOverlay.get(displayNodeId) : undefined;
   const displayAnalysis = displayNodeId ? timeFrequencyResults[displayNodeId] ?? evaluation.analysis.get(displayNodeId) : undefined;
-  const displaySpectrum = displayAnalysis?.type === "spectrum" ? { frequency: displayAnalysis.frequency, magnitude: displayAnalysis.magnitude } : undefined;
   const compareSignals = selectedNodeIds
     .filter((id) => id !== displayNodeId)
     .map((id) => signalOverlay.get(id))
     .filter((signal): signal is Signal => Boolean(signal));
-  const cursorReadout = readSignalAtTime(displaySignal, currentTime);
+  const displaySignalPlot = useMemo(
+    () => (displaySignal ? createSignalPlotModel(displaySignal) : undefined),
+    [displaySignal]
+  );
+  const compatibleComparePlots = useMemo(() => {
+    if (!displaySignalPlot || displaySignalPlot.kind !== "line") return [];
+    return compareSignals
+      .map(createSignalPlotModel)
+      .filter(
+        (plot): plot is Extract<ScientificPlotModel, { kind: "line" }> =>
+          plot.kind === "line" &&
+          plot.xAxis.kind === displaySignalPlot.xAxis.kind &&
+          plot.xAxis.linkToMaster === displaySignalPlot.xAxis.linkToMaster
+      );
+  }, [compareSignals, displaySignalPlot]);
+  const spectrumPlot = useMemo<Extract<ScientificPlotModel, { kind: "spectrum" }> | undefined>(() => {
+    if (displayAnalysis?.type === "spectrum") {
+      const plot = createAnalysisPlotModel(displayAnalysis);
+      return plot.kind === "spectrum" ? plot : undefined;
+    }
+    if (!displaySignal || displaySignal.domain?.linkToMaster === false) return undefined;
+    const spectrum = fftSpectrum(displaySignal);
+    return {
+      kind: "spectrum",
+      id: displaySignal.id,
+      title: `${displaySignal.name} Spectrum`,
+      frequency: spectrum.frequency,
+      magnitude: spectrum.magnitude,
+      xAxis: { kind: "frequency", label: "Frequency", unit: "Hz", linkToMaster: false },
+      yLabel: "Amplitude",
+      yUnit: displaySignal.unit
+    };
+  }, [displayAnalysis, displaySignal]);
+  const analysisOnly = Boolean(displayAnalysis && displayAnalysis.type !== "spectrum");
+  const activeChart = analysisOnly ? "analysis" : displayAnalysis?.type === "spectrum" ? "spectrum" : chartMode === "spectrum" && spectrumPlot ? "spectrum" : "series";
+  const plotKey = `${displayNodeId ?? "none"}:${activeChart}:${activeChart === "spectrum" ? `${spectrumMode}:${frequencyScale}` : "default"}`;
+  const activePlotView = plotViews[plotKey] ?? {};
+  const activeCursorX = displaySignalPlot?.kind === "line" && displaySignalPlot.xAxis.linkToMaster
+    ? currentTime
+    : plotCursorXs[plotKey] ?? (displaySignalPlot?.kind === "line" ? displaySignalPlot.x[0] : undefined);
+  const cursorReadout = readSignalAtTime(displaySignal, activeCursorX ?? currentTime);
   const sampleRate = graphSampleRate(graph);
   const samples = graphSamples(graph);
-  const duration = graphDuration(graph);
+  const duration = Math.max(
+    graphDuration(graph),
+    ...[...signalOverlay.values()]
+      .filter((signal) => signal.domain?.linkToMaster !== false)
+      .map((signal) => signal.time[signal.time.length - 1] ?? 0)
+  );
   const visibleTimeView = clampView(timeView.end > duration ? { start: 0, end: duration } : timeView, duration);
   const visibleSelection = clampSelection(timeSelection.end > duration ? { start: 0, end: duration } : timeSelection, visibleTimeView, duration);
+  const setActivePlotView = (axis: "x" | "y", range?: ValueRange) => {
+    setPlotViews((current) => ({
+      ...current,
+      [plotKey]: { ...current[plotKey], [axis]: range }
+    }));
+  };
 
   const commitGraph = (updater: (current: SignalGraph) => SignalGraph) => {
     setGraph((current) => {
@@ -2211,23 +2264,33 @@ export const App = () => {
             <div className="chart-panel dominant">
               <div className="chart-heading">
                 <div className="chart-tabs">
-                  <button className={chartMode === "time" ? "active" : ""} onClick={() => setChartMode("time")}>Time</button>
-                  <button className={chartMode === "spectrum" ? "active" : ""} onClick={() => setChartMode("spectrum")}>Spectrum</button>
-                  {displayAnalysis && displayAnalysis.type !== "spectrum" ? <button className="active">Analysis</button> : null}
-                  {chartMode === "spectrum" ? (
-                    <>
-                      <button className={spectrumMode === "linear" ? "active" : ""} onClick={() => setSpectrumMode("linear")}>Linear</button>
-                      <button className={spectrumMode === "db" ? "active" : ""} onClick={() => setSpectrumMode("db")}>dB</button>
-                    </>
+                  {displaySignalPlot?.kind === "line" ? (
+                    <button className={activeChart === "series" ? "active" : ""} onClick={() => setChartMode("time")}>
+                      {displaySignalPlot.xAxis.kind === "time" ? "Waveform" : "Result"}
+                    </button>
                   ) : null}
+                  {spectrumPlot ? <button className={activeChart === "spectrum" ? "active" : ""} onClick={() => setChartMode("spectrum")}>Spectrum</button> : null}
+                  {analysisOnly ? <button className="active">Analysis</button> : null}
                 </div>
                 <div className="chart-tools">
-                  {chartMode === "time" && !displayAnalysis ? (
+                  {activeChart === "series" && displaySignalPlot?.kind === "line" ? (
                     <>
+                      <span className={`domain-badge ${displaySignalPlot.xAxis.linkToMaster ? "linked" : "independent"}`}>
+                        {displaySignalPlot.xAxis.label} · {displaySignalPlot.xAxis.linkToMaster ? "Master linked" : "Independent"}
+                      </span>
+                      <div className="plot-legend" aria-label="Visible series">
+                        {[displaySignalPlot, ...compatibleComparePlots].map((plot, index) => (
+                          <span key={plot.id}>
+                            <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
+                            {plot.title}
+                          </span>
+                        ))}
+                      </div>
+                      <code className="plot-size">{displaySignalPlot.x.length.toLocaleString()} points</code>
                       <div className="cursor-readout">
-                        <span>Current Sample</span>
-                        <strong>{cursorReadout ? cursorReadout.time.toFixed(6) : "-"}s</strong>
-                        <code>{formatValue(cursorReadout?.value)}</code>
+                        <span>Crosshair</span>
+                        <strong>{cursorReadout ? `${formatValue(cursorReadout.time)} ${displaySignalPlot.xAxis.unit}` : "-"}</strong>
+                        <code>{formatValue(cursorReadout?.value)} {displaySignalPlot.yUnit}</code>
                       </div>
                       <label className="preview-density">
                         <span>Preview pts</span>
@@ -2238,10 +2301,34 @@ export const App = () => {
                           <option value={2000}>2000</option>
                         </select>
                       </label>
-                      <button className="icon-action" title="Auto scale Y axis" onClick={() => setYRange(undefined)}>
+                      {!displaySignalPlot.xAxis.linkToMaster ? (
+                        <button className="icon-action" title="Fit the complete result domain" onClick={() => setActivePlotView("x", undefined)}>
+                          <Maximize2 size={14} />
+                          Fit X
+                        </button>
+                      ) : null}
+                      <button className="icon-action" title="Auto scale Y axis" onClick={() => setActivePlotView("y", undefined)}>
                         <SlidersHorizontal size={14} />
-                        Auto Scale Y
+                        Auto Y
                       </button>
+                    </>
+                  ) : activeChart === "spectrum" && spectrumPlot ? (
+                    <>
+                      <span className="domain-badge independent">Frequency · Independent</span>
+                      <div className="plot-legend">
+                        <span><i style={{ background: scientificPlotPalette[0] }} />{spectrumPlot.title}</span>
+                      </div>
+                      <code className="plot-size">{spectrumPlot.frequency.length.toLocaleString()} bins</code>
+                      <div className="compact-segments" aria-label="Spectrum magnitude scale">
+                        <button className={spectrumMode === "linear" ? "active" : ""} onClick={() => setSpectrumMode("linear")}>Amplitude</button>
+                        <button className={spectrumMode === "db" ? "active" : ""} onClick={() => setSpectrumMode("db")}>dB</button>
+                      </div>
+                      <div className="compact-segments" aria-label="Frequency axis scale">
+                        <button className={frequencyScale === "linear" ? "active" : ""} onClick={() => setFrequencyScale("linear")}>Linear f</button>
+                        <button className={frequencyScale === "log" ? "active" : ""} onClick={() => setFrequencyScale("log")}>Log f</button>
+                      </div>
+                      <button className="icon-action" title="Fit the complete frequency range" onClick={() => setActivePlotView("x", undefined)}><Maximize2 size={14} /> Fit X</button>
+                      <button className="icon-action" title="Auto scale spectrum amplitude" onClick={() => setActivePlotView("y", undefined)}><SlidersHorizontal size={14} /> Auto Y</button>
                     </>
                   ) : displayAnalysis && displayAnalysis.type !== "spectrum" ? (
                     <div className="section-heading">
@@ -2256,28 +2343,36 @@ export const App = () => {
                   )}
                 </div>
               </div>
-              {displayAnalysis && displayAnalysis.type !== "spectrum" ? (
+              {activeChart === "analysis" && displayAnalysis ? (
                 <AnalysisPanel analysis={displayAnalysis} />
-              ) : chartMode === "time" ? (
-                <SignalLine
-                  signal={displaySignal}
-                  compareSignals={compareSignals}
-                  color="#0ea5e9"
-                  timeView={visibleSelection}
-                  currentTime={currentTime}
-                  cursorValue={cursorReadout?.value}
-                  yRange={yRange}
+              ) : activeChart === "series" && displaySignalPlot?.kind === "line" ? (
+                <ScientificSeriesPlot
+                  model={displaySignalPlot}
+                  comparisons={compatibleComparePlots}
+                  xRange={displaySignalPlot.xAxis.linkToMaster ? { min: visibleSelection.start, max: visibleSelection.end } : activePlotView.x}
+                  yRange={activePlotView.y}
+                  cursorX={activeCursorX}
                   maxPreviewPoints={plotPreviewPoints}
-                  onYRange={setYRange}
-                  onCurrentTime={setCurrentTime}
+                  onXRange={(range) => setActivePlotView("x", range)}
+                  onYRange={(range) => setActivePlotView("y", range)}
+                  onCursorX={(value) => {
+                    if (displaySignalPlot.xAxis.linkToMaster) setCurrentTime(value);
+                    else setPlotCursorXs((current) => ({ ...current, [plotKey]: value }));
+                  }}
+                />
+              ) : activeChart === "spectrum" && spectrumPlot ? (
+                <ScientificSpectrumPlot
+                  model={spectrumPlot}
+                  magnitudeMode={spectrumMode}
+                  frequencyScale={frequencyScale}
+                  xRange={activePlotView.x}
+                  yRange={activePlotView.y}
+                  onXRange={(range) => setActivePlotView("x", range)}
+                  onYRange={(range) => setActivePlotView("y", range)}
                 />
               ) : (
-                <SpectrumBars signal={displaySignal} spectrumData={displaySpectrum} mode={spectrumMode} />
+                <div className="chart-empty">No compatible result view</div>
               )}
-              <div className="chart-window-readout">
-                <MousePointer2 size={13} />
-                <span>{displayNode?.name ?? "no display target"}</span>
-              </div>
             </div>
           </section>
         </section>

@@ -6,6 +6,7 @@ export type SourceKind =
   | "gaussianPulse"
   | "chirp"
   | "noise"
+  | "photonCounts"
   | "constant"
   | "import"
   | "customSource";
@@ -50,6 +51,15 @@ export type ParamSchema = {
   options?: Array<{ label: string; value: string }>;
 };
 
+export type AxisKind = "time" | "delay" | "sample";
+
+export type SignalDomain = {
+  kind: AxisKind;
+  label: string;
+  unit: string;
+  linkToMaster: boolean;
+};
+
 export type Signal = {
   id: string;
   name: string;
@@ -60,6 +70,7 @@ export type Signal = {
   params: Record<string, ParamValue>;
   seed?: number;
   timelineOffset?: number;
+  domain?: SignalDomain;
   provenance?: ResultProvenance;
 };
 

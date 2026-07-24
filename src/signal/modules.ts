@@ -81,6 +81,42 @@ export const moduleDefinitions: ModuleDefinition[] = [
     params: [{ key: "amplitude", label: "Amplitude", type: "number", defaultValue: 0.2, min: 0, step: 0.05 }]
   },
   {
+    kind: "photonCounts",
+    type: "source",
+    label: "Photon Counts",
+    description: "Coherent or thermal-light photon counts with detector shot noise, efficiency, and dark counts.",
+    inputCount: 0,
+    params: [
+      {
+        key: "lightStatistics",
+        label: "Light Statistics",
+        type: "select",
+        defaultValue: "coherent",
+        options: [
+          { label: "Coherent (Poisson)", value: "coherent" },
+          { label: "Thermal (Chaotic)", value: "thermal" }
+        ]
+      },
+      { key: "baselineRate", label: "Baseline Rate", type: "number", defaultValue: 100000, min: 0, step: 1000, unit: "counts/s" },
+      { key: "coherenceTime", label: "Coherence Time", type: "number", defaultValue: 0.01, min: 0, step: 0.001, unit: "s" },
+      { key: "quantumEfficiency", label: "Quantum Efficiency", type: "number", defaultValue: 1, min: 0, max: 1, step: 0.01 },
+      { key: "darkCountRate", label: "Dark Count Rate", type: "number", defaultValue: 0, min: 0, step: 10, unit: "counts/s" },
+      { key: "modulationDepth", label: "Mod Depth", type: "number", defaultValue: 0, min: 0, max: 1, step: 0.01 },
+      { key: "modulationFrequency", label: "Mod Frequency", type: "number", defaultValue: 1, min: 0, step: 0.1, unit: "Hz" },
+      { key: "relativeIntensityNoise", label: "Rel Intensity Noise", type: "number", defaultValue: 0, min: 0, step: 0.01 },
+      {
+        key: "outputMode",
+        label: "Output Mode",
+        type: "select",
+        defaultValue: "counts",
+        options: [
+          { label: "Counts per sample", value: "counts" },
+          { label: "Estimated rate", value: "rate" }
+        ]
+      }
+    ]
+  },
+  {
     kind: "constant",
     type: "source",
     label: "Constant",
@@ -269,7 +305,7 @@ export const moduleDefinitions: ModuleDefinition[] = [
     type: "analysis",
     outputType: "scalar",
     label: "G2 Correlation",
-    description: "Normalized second-order auto/cross correlation at a fixed lag or over time.",
+    description: "Second-order auto/cross correlation at a fixed lag, over time, or scanned versus delay.",
     inputCount: "many",
     params: [
       {
@@ -289,7 +325,17 @@ export const moduleDefinitions: ModuleDefinition[] = [
         defaultValue: "averageAtLag",
         options: [
           { label: "Average at Lag", value: "averageAtLag" },
-          { label: "Curve over Time", value: "curveOverTime" }
+          { label: "Curve vs Delay (tau)", value: "curveOverLag" }
+        ]
+      },
+      {
+        key: "estimator",
+        label: "Estimator",
+        type: "select",
+        defaultValue: "intensity",
+        options: [
+          { label: "Intensity Product", value: "intensity" },
+          { label: "Photon Counting (Normal Ordered)", value: "photonCounting" }
         ]
       },
       {
@@ -303,7 +349,7 @@ export const moduleDefinitions: ModuleDefinition[] = [
         ]
       },
       { key: "lagSamples", label: "Lag", type: "number", defaultValue: 0, min: 0, step: 1, unit: "samples" },
-      { key: "averagePoints", label: "Average Points", type: "number", defaultValue: 0, min: 0, step: 1, unit: "samples" }
+      { key: "maxLagSamples", label: "Maximum Lag", type: "number", defaultValue: 100, min: 0, step: 1, unit: "samples" }
     ]
   },
   {

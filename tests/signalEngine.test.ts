@@ -42,6 +42,66 @@ describe("signal sources", () => {
     expect(createSourceSignal(config).values).toEqual(createSourceSignal(config).values);
   });
 
+  it("generates reproducible poisson photon counts and estimated rates", () => {
+    const countsConfig = {
+      id: "photons",
+      kind: "photonCounts" as const,
+      name: "Photon Counts",
+      sampleRate: 10,
+      length: 8,
+      seed: 7,
+      params: {
+        baselineRate: 100,
+        quantumEfficiency: 0.8,
+        darkCountRate: 10,
+        modulationDepth: 0,
+        modulationFrequency: 1,
+        relativeIntensityNoise: 0,
+        outputMode: "counts"
+      }
+    };
+    const rateConfig = {
+      ...countsConfig,
+      id: "photon-rate",
+      params: { ...countsConfig.params, outputMode: "rate" }
+    };
+
+    const counts = createSourceSignal(countsConfig);
+    const repeated = createSourceSignal(countsConfig);
+    const rate = createSourceSignal(rateConfig);
+
+    expect(counts.values).toEqual(repeated.values);
+    expect(counts.unit).toBe("counts");
+    expect(rate.unit).toBe("counts/s");
+    expect(rate.values).toEqual(counts.values.map((value) => value * rate.sampleRate));
+  });
+
+  it("generates reproducible correlated thermal photon counts", () => {
+    const config = {
+      id: "thermal-photons",
+      kind: "photonCounts" as const,
+      name: "Thermal Photon Counts",
+      sampleRate: 1000,
+      length: 2000,
+      seed: 11,
+      params: {
+        lightStatistics: "thermal",
+        baselineRate: 100000,
+        coherenceTime: 0.02,
+        quantumEfficiency: 1,
+        darkCountRate: 0,
+        relativeIntensityNoise: 0,
+        outputMode: "counts"
+      }
+    };
+
+    const first = createSourceSignal(config);
+    const repeated = createSourceSignal(config);
+
+    expect(first.values).toEqual(repeated.values);
+    expect(first.values.every((value) => Number.isInteger(value) && value >= 0)).toBe(true);
+  });
+
   it("generates triangle waves and gaussian pulses as basic sources", () => {
     const triangle = createSourceSignal({
       id: "tri",
@@ -445,7 +505,7 @@ describe("operation modules", () => {
     expect(analysis?.params).toMatchObject({ lagSamples: 1, lagSeconds: 1 });
   });
 
-  it("computes normalized second-order cross-correlation as a time curve", () => {
+  it("maps the legacy G2 time-curve mode to a curve over delay", () => {
     const graph: SignalGraph = {
       nodes: [
         { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 2, length: 3, params: { values: [1, 2, 3] } },
@@ -457,7 +517,7 @@ describe("operation modules", () => {
           name: "G2 Curve",
           position: { x: 0, y: 0 },
           timelineOffset: 0,
-          params: { correlationType: "cross", outputMode: "curveOverTime", lagSamples: 0 }
+          params: { correlationType: "cross", outputMode: "curveOverTime", maxLagSamples: 2 }
         }
       ],
       edges: [
@@ -469,33 +529,13 @@ describe("operation modules", () => {
     const signal = evaluateGraph(graph).signals.get("g2");
 
     expect(signal?.unit).toBe("g2");
-    expect(signal?.values).toEqual([0.25, 1, 2.25]);
+    expect(signal?.values[0]).toBeCloseTo(7 / 6);
+    expect(signal?.values[1]).toBeCloseTo(1);
+    expect(signal?.values[2]).toBeCloseTo(0.75);
     expect(signal?.time).toEqual([0, 0.5, 1]);
+    expect(signal?.domain).toMatchObject({ kind: "delay", linkToMaster: false });
   });
 
-  it("limits second-order correlation averaging to the requested point count", () => {
-    const graph: SignalGraph = {
-      nodes: [
-        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 4, params: { values: [1, 2, 3, 4] } },
-        {
-          id: "g2",
-          type: "operation",
-          kind: "secondOrderCorrelation",
-          name: "Limited G2",
-          position: { x: 0, y: 0 },
-          timelineOffset: 0,
-          params: { correlationType: "auto", outputMode: "averageAtLag", normalization: "raw", lagSamples: 1, averagePoints: 2 }
-        }
-      ],
-      edges: [{ id: "x-g2", from: "x", to: "g2" }]
-    };
-
-    const analysis = evaluateGraph(graph).analysis.get("g2");
-
-    expect(analysis?.type).toBe("scalar");
-    expect(analysis?.type === "scalar" ? analysis.value : undefined).toBe(4);
-    expect(analysis?.params).toMatchObject({ averagePoints: 2, usedPoints: 2 });
-  });
   it("computes raw second-order correlation without mean normalization", () => {
     const graph: SignalGraph = {
       nodes: [
@@ -518,6 +558,108 @@ describe("operation modules", () => {
     expect(analysis?.type).toBe("scalar");
     expect(analysis?.type === "scalar" ? analysis.value : undefined).toBe(4);
     expect(analysis?.type === "scalar" ? analysis.unit : undefined).toBe("a.u.^2");
+  });
+
+  it("computes a normalized G2 curve versus lag", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 2, length: 3, params: { values: [1, 2, 3] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "G2 vs Lag",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "auto", outputMode: "curveOverLag", normalization: "normalized", maxLagSamples: 2 }
+        }
+      ],
+      edges: [{ id: "x-g2", from: "x", to: "g2" }]
+    };
+
+    const signal = evaluateGraph(graph).signals.get("g2");
+
+    expect(signal?.time).toEqual([0, 0.5, 1]);
+    expect(signal?.values[0]).toBeCloseTo(7 / 6);
+    expect(signal?.values[1]).toBeCloseTo(1);
+    expect(signal?.values[2]).toBeCloseTo(0.75);
+    expect(signal?.domain).toMatchObject({ kind: "delay", label: "Delay", unit: "s", linkToMaster: false });
+  });
+
+  it("uses the normal-ordered factorial moment for photon-counting G2 at zero lag", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        { id: "counts", type: "source", kind: "import", name: "Counts", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 4, params: { values: [0, 1, 2, 3] } },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "Photon G2",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: { correlationType: "auto", outputMode: "curveOverLag", estimator: "photonCounting", maxLagSamples: 0 }
+        }
+      ],
+      edges: [{ id: "counts-g2", from: "counts", to: "g2" }]
+    };
+
+    const result = evaluateGraph(graph);
+    const signal = result.signals.get("g2");
+
+    expect(result.errors.get("g2")).toBeUndefined();
+    expect(signal?.values[0]).toBeCloseTo(8 / 9);
+  });
+
+  it("recovers thermal-light bunching from photon counts as G2 decays from two to one", () => {
+    const graph: SignalGraph = {
+      sampleRate: 1000,
+      nodes: [
+        {
+          id: "thermal",
+          type: "source",
+          kind: "photonCounts",
+          name: "Thermal Counts",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          sampleRate: 1000,
+          length: 20000,
+          seed: 19,
+          params: {
+            lightStatistics: "thermal",
+            baselineRate: 1000000,
+            coherenceTime: 0.01,
+            quantumEfficiency: 1,
+            darkCountRate: 0,
+            modulationDepth: 0,
+            relativeIntensityNoise: 0,
+            outputMode: "counts"
+          }
+        },
+        {
+          id: "g2",
+          type: "operation",
+          kind: "secondOrderCorrelation",
+          name: "Thermal G2",
+          position: { x: 0, y: 0 },
+          timelineOffset: 0,
+          params: {
+            correlationType: "auto",
+            outputMode: "curveOverLag",
+            estimator: "photonCounting",
+            normalization: "normalized",
+            maxLagSamples: 50
+          }
+        }
+      ],
+      edges: [{ id: "thermal-g2", from: "thermal", to: "g2" }]
+    };
+
+    const signal = evaluateGraph(graph).signals.get("g2");
+
+    expect(signal?.values[0]).toBeGreaterThan(1.7);
+    expect(signal?.values[0]).toBeLessThan(2.3);
+    expect(signal?.values[50]).toBeGreaterThan(0.8);
+    expect(signal?.values[50]).toBeLessThan(1.2);
   });
 
   it("computes quantile summary analysis with mean min max and arbitrary percentile", () => {

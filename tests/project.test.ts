@@ -86,4 +86,17 @@ describe("project JSON migration", () => {
       }
     });
   });
+
+  it("migrates the removed G2 time-curve mode to a delay scan", () => {
+    const graph = migrateProjectGraph({
+      nodes: [
+        { id: "x", type: "source", kind: "import", name: "X", sampleRate: 1, length: 2, params: { values: [1, 2] } },
+        { id: "g2", type: "operation", kind: "secondOrderCorrelation", name: "G2", params: { outputMode: "curveOverTime", averagePoints: 8 } }
+      ],
+      edges: [{ id: "x-g2", from: "x", to: "g2" }]
+    });
+
+    expect(graph.nodes.find((node) => node.id === "g2")?.params.outputMode).toBe("curveOverLag");
+    expect(graph.nodes.find((node) => node.id === "g2")?.params.averagePoints).toBeUndefined();
+  });
 });

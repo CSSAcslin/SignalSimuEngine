@@ -1,3 +1,4 @@
+import FFT from "fft.js";
 import type {
   AnalysisResult,
   GraphEvaluation,
@@ -106,18 +107,38 @@ const seededRandom = (seed = 1) => {
   };
 };
 
-const baseSignal = (node: SignalSourceNode, values: number[]): Signal => ({
+const baseSignal = (node: SignalSourceNode, values: number[], unit = "a.u."): Signal => ({
   id: node.id,
   name: node.name,
   sampleRate: node.sampleRate,
-  unit: "a.u.",
+  unit,
   time: makeTime(values.length, node.sampleRate),
   values,
   params: { ...node.params },
   seed: node.seed,
   timelineOffset: node.timelineOffset,
-  provenance: nodeProvenance(node, [], node.sampleRate, values.length, "a.u.")
+  domain: { kind: "time", label: "Time", unit: "s", linkToMaster: true },
+  provenance: nodeProvenance(node, [], node.sampleRate, values.length, unit)
 });
+
+const gaussianRandom = (random: () => number) => {
+  const u1 = Math.max(random(), 1e-12);
+  const u2 = random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+};
+
+const poissonRandom = (lambda: number, random: () => number) => {
+  if (!Number.isFinite(lambda) || lambda <= 0) return 0;
+  if (lambda > 60) return Math.max(0, Math.round(lambda + Math.sqrt(lambda) * gaussianRandom(random)));
+  const limit = Math.exp(-lambda);
+  let product = 1;
+  let count = 0;
+  do {
+    count += 1;
+    product *= random();
+  } while (product > limit);
+  return count - 1;
+};
 
 export const createSourceSignal = (node: Omit<SignalSourceNode, "type" | "position" | "timelineOffset"> & Partial<SignalSourceNode>): Signal => {
   const length = Math.max(1, Math.floor(node.length));
@@ -148,6 +169,38 @@ export const createSourceSignal = (node: Omit<SignalSourceNode, "type" | "positi
       sourceNode,
       Array.from({ length }, () => (random() * 2 - 1) * amplitude)
     );
+  }
+
+  if (node.kind === "photonCounts") {
+    const random = seededRandom(node.seed ?? 1);
+    const lightStatistics = typeof params.lightStatistics === "string" ? params.lightStatistics : "coherent";
+    const baselineRate = Math.max(0, asNumber(params.baselineRate, 100000));
+    const coherenceTime = Math.max(0, asNumber(params.coherenceTime, 0.01));
+    const quantumEfficiency = Math.min(1, Math.max(0, asNumber(params.quantumEfficiency, 1)));
+    const darkCountRate = Math.max(0, asNumber(params.darkCountRate, 0));
+    const modulationDepth = Math.min(1, Math.max(0, asNumber(params.modulationDepth, 0)));
+    const modulationFrequency = Math.max(0, asNumber(params.modulationFrequency, 1));
+    const relativeIntensityNoise = Math.max(0, asNumber(params.relativeIntensityNoise, 0));
+    const outputMode = typeof params.outputMode === "string" ? params.outputMode : "counts";
+    const fieldCorrelation = coherenceTime > 0 ? Math.exp(-1 / (sampleRate * coherenceTime)) : 0;
+    const fieldInnovation = Math.sqrt(Math.max(0, 1 - fieldCorrelation * fieldCorrelation));
+    let fieldReal = gaussianRandom(random);
+    let fieldImaginary = gaussianRandom(random);
+    const counts = makeTime(length, sampleRate).map((time) => {
+      let intensityFactor = 1;
+      if (lightStatistics === "thermal") {
+        fieldReal = fieldCorrelation * fieldReal + fieldInnovation * gaussianRandom(random);
+        fieldImaginary = fieldCorrelation * fieldImaginary + fieldInnovation * gaussianRandom(random);
+        intensityFactor = (fieldReal * fieldReal + fieldImaginary * fieldImaginary) / 2;
+      }
+      const modulation = modulationDepth * Math.sin(2 * Math.PI * modulationFrequency * time);
+      const rin = relativeIntensityNoise * gaussianRandom(random);
+      const signalRate = baselineRate * intensityFactor * Math.max(0, 1 + modulation + rin);
+      const lambda = (signalRate * quantumEfficiency + darkCountRate) / sampleRate;
+      return poissonRandom(lambda, random);
+    });
+    if (outputMode === "rate") return baseSignal(sourceNode, counts.map((count) => count * sampleRate), "counts/s");
+    return baseSignal(sourceNode, counts, "counts");
   }
 
   if (node.kind === "customSource") {
@@ -214,6 +267,7 @@ const cloneWithValues = (source: Signal, id: string, name: string, values: numbe
   values,
   params: {},
   timelineOffset: source.timelineOffset,
+  domain: source.domain ?? { kind: "time", label: "Time", unit: "s", linkToMaster: true },
   provenance: source.provenance
 });
 
@@ -260,23 +314,24 @@ export const convolve = (a: number[], b: number[]) => {
 export const correlate = (a: number[], b: number[]) => convolve(a, [...b].reverse());
 
 export const fftSpectrum = (signal: Signal): Spectrum => {
-  const n = signal.values.length;
-  const bins = Math.floor(n / 2);
-  const frequency: number[] = [];
-  const magnitude: number[] = [];
-
-  for (let k = 0; k < bins; k += 1) {
-    let real = 0;
-    let imag = 0;
-    for (let index = 0; index < n; index += 1) {
-      const angle = (-2 * Math.PI * k * index) / n;
-      real += signal.values[index] * Math.cos(angle);
-      imag += signal.values[index] * Math.sin(angle);
-    }
-    frequency.push((k * signal.sampleRate) / n);
-    magnitude.push(Math.sqrt(real * real + imag * imag) / n);
-  }
-
+  const sampleCount = signal.values.length;
+  if (sampleCount === 0) return { frequency: [], magnitude: [] };
+  const transformSize = 2 ** Math.ceil(Math.log2(Math.max(2, sampleCount)));
+  const input = Array(transformSize).fill(0) as number[];
+  signal.values.forEach((value, index) => {
+    input[index] = Number.isFinite(value) ? value : 0;
+  });
+  const fft = new FFT(transformSize);
+  const output = fft.createComplexArray();
+  fft.realTransform(output, input);
+  const bins = transformSize / 2 + 1;
+  const frequency = Array.from({ length: bins }, (_, index) => (index * signal.sampleRate) / transformSize);
+  const magnitude = Array.from({ length: bins }, (_, index) => {
+    const real = output[index * 2] ?? 0;
+    const imaginary = output[index * 2 + 1] ?? 0;
+    const oneSidedScale = index === 0 || index === transformSize / 2 ? 1 : 2;
+    return (Math.hypot(real, imaginary) * oneSidedScale) / sampleCount;
+  });
   return { frequency, magnitude };
 };
 
@@ -389,19 +444,21 @@ const occupiedBandwidth = (signal: Signal, threshold: number) => {
 
 const secondOrderCorrelation = (node: OperationNode, inputs: Signal[]): { signal?: Signal; analysis?: AnalysisResult; error?: string } => {
   const correlationType = typeof node.params.correlationType === "string" ? node.params.correlationType : "auto";
-  const outputMode = typeof node.params.outputMode === "string" ? node.params.outputMode : "averageAtLag";
+  const requestedOutputMode = typeof node.params.outputMode === "string" ? node.params.outputMode : "averageAtLag";
+  const outputMode = requestedOutputMode === "curveOverTime" ? "curveOverLag" : requestedOutputMode;
+  const estimator = typeof node.params.estimator === "string" ? node.params.estimator : "intensity";
   const normalization = typeof node.params.normalization === "string" ? node.params.normalization : "normalized";
   const lagSamples = Math.max(0, Math.floor(asNumber(node.params.lagSamples, 0)));
-  const requestedAveragePoints = Math.max(0, Math.floor(asNumber(node.params.averagePoints, 0)));
+  const requestedMaxLagSamples = Math.max(0, Math.floor(asNumber(node.params.maxLagSamples, 100)));
   const left = inputs[0];
   const right = correlationType === "cross" ? inputs[1] : inputs[0];
   if (!left) return { error: "G2 correlation requires at least one input." };
   if (correlationType === "cross" && !right) return { error: "G2 cross-correlation requires two inputs." };
   if (!right) return { error: "G2 correlation has no comparison input." };
-
-  const overlapLength = Math.min(left.values.length, right.values.length - lagSamples);
-  const length = requestedAveragePoints > 0 ? Math.min(overlapLength, requestedAveragePoints) : overlapLength;
-  if (length <= 0) return { error: "Lag is outside the overlapping signal range." };
+  const photonCounting = estimator === "photonCounting";
+  if (photonCounting && correlationType === "auto" && left.unit === "counts/s") {
+    return { error: "Photon-counting G2 requires counts per sample. Set the photon source Output Mode to Counts per sample." };
+  }
 
   const normalized = normalization !== "raw";
   const leftMean = meanValue(left.values);
@@ -409,35 +466,57 @@ const secondOrderCorrelation = (node: OperationNode, inputs: Signal[]): { signal
   const denominator = normalized ? leftMean * rightMean : 1;
   if (normalized && Math.abs(denominator) < 1e-12) return { error: "G2 normalization requires non-zero input means." };
 
-  const values = Array.from({ length }, (_, index) => (left.values[index] * right.values[index + lagSamples]) / denominator);
+  const productAt = (index: number, lag: number) => {
+    const leftValue = left.values[index];
+    const rightValue = right.values[index + lag];
+    const normalOrderingCorrection = photonCounting && correlationType === "auto" && lag === 0 ? leftValue : 0;
+    return (leftValue * rightValue - normalOrderingCorrection) / denominator;
+  };
   const lagSeconds = lagSamples / Math.max(left.sampleRate, 1e-12);
-  const params = { ...node.params, correlationType, outputMode, normalization: normalized ? "normalized" : "raw", lagSamples, lagSeconds, averagePoints: requestedAveragePoints, usedPoints: length };
+  const params: OperationNode["params"] = { ...node.params, correlationType, outputMode, estimator, normalization: normalized ? "normalized" : "raw", lagSamples, lagSeconds };
+  delete params.averagePoints;
   const inputNodeIds = inputs.slice(0, correlationType === "cross" ? 2 : 1).map((signal) => signal.provenance?.nodeId ?? signal.id);
   const unit = normalized ? "g2" : correlationType === "cross" ? `${left.unit} * ${right.unit}` : `${left.unit}^2`;
   const labelPrefix = normalized ? "g2" : "G2";
 
-  if (outputMode === "curveOverTime") {
+  if (outputMode === "curveOverLag") {
+    const maxLagSamples = Math.min(requestedMaxLagSamples, Math.max(0, right.values.length - 1), Math.max(0, left.values.length - 1));
+    const lagValues = Array.from({ length: maxLagSamples + 1 }, (_, lag) => {
+      const lagOverlapLength = Math.min(left.values.length, right.values.length - lag);
+      let sum = 0;
+      for (let index = 0; index < lagOverlapLength; index += 1) sum += productAt(index, lag);
+      return sum / lagOverlapLength;
+    });
+    const lagTime = Array.from({ length: maxLagSamples + 1 }, (_, lag) => lag / left.sampleRate);
+    const lagParams = { ...params, maxLagSamples: requestedMaxLagSamples, usedMaxLagSamples: maxLagSamples, usedPoints: lagValues.length };
     return {
       signal: {
         id: node.id,
         name: node.name,
         sampleRate: left.sampleRate,
         unit,
-        time: left.time.slice(0, length),
-        values,
-        params,
-        provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, length, unit, {
+        time: lagTime,
+        values: lagValues,
+        params: lagParams,
+        domain: { kind: "delay", label: "Delay", unit: "s", linkToMaster: false },
+        provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, lagValues.length, unit, {
           correlationType,
           outputMode,
+          estimator,
           normalization: normalized ? "normalized" : "raw",
-          lagSamples,
-          lagSeconds,
-          averagePoints: requestedAveragePoints,
-          usedPoints: length
+          maxLagSamples: requestedMaxLagSamples,
+          usedMaxLagSamples: maxLagSamples,
+          usedPoints: lagValues.length
         })
       }
     };
   }
+
+  const overlapLength = Math.min(left.values.length, right.values.length - lagSamples);
+  if (overlapLength <= 0) return { error: "Lag is outside the overlapping signal range." };
+  const products = Array.from({ length: overlapLength }, (_, index) => productAt(index, lagSamples));
+  const scalarValue = meanValue(products);
+  const scalarParams = { ...params, usedPoints: overlapLength };
 
   return {
     analysis: {
@@ -445,15 +524,17 @@ const secondOrderCorrelation = (node: OperationNode, inputs: Signal[]): { signal
       id: node.id,
       name: node.name,
       label: correlationType === "cross" ? `${labelPrefix} Cross-correlation` : `${labelPrefix} Autocorrelation`,
-      value: meanValue(values),
+      value: scalarValue,
       unit,
-      params,
-      provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, length, unit, {
+      params: scalarParams,
+      provenance: nodeProvenance(node, inputNodeIds, left.sampleRate, overlapLength, unit, {
         correlationType,
         outputMode,
+        estimator,
         normalization: normalized ? "normalized" : "raw",
         lagSamples,
-        lagSeconds
+        lagSeconds,
+        usedPoints: overlapLength
       })
     }
   };
@@ -521,7 +602,18 @@ const applyOperation = (node: OperationNode, inputs: Signal[]): { signal?: Signa
       return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, convolve(inputs[0].values, inputs[1].values))) };
     case "correlate":
       if (inputs.length < 2) return { error: "Cross-correlation requires two inputs." };
-      return { signal: withOperationProvenance(cloneWithValues(inputs[0], node.id, name, correlate(inputs[0].values, inputs[1].values))) };
+      {
+        const values = correlate(inputs[0].values, inputs[1].values);
+        const firstLag = -(inputs[1].values.length - 1);
+        const signal = withOperationProvenance(cloneWithValues(inputs[0], node.id, name, values));
+        return {
+          signal: {
+            ...signal,
+            time: values.map((_, index) => (firstLag + index) / inputs[0].sampleRate),
+            domain: { kind: "delay", label: "Lag", unit: "s", linkToMaster: false }
+          }
+        };
+      }
     case "fft":
       return spectralAnalysis(node, inputs[0]);
     case "normalize": {

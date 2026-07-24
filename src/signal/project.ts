@@ -48,6 +48,11 @@ const migrateNode = (value: unknown): SignalNode | undefined => {
   }
 
   if (type === "operation") {
+    const migratedParams = { ...params };
+    if (rawKind === "secondOrderCorrelation") {
+      delete migratedParams.averagePoints;
+      if (migratedParams.outputMode === "curveOverTime") migratedParams.outputMode = "curveOverLag";
+    }
     return {
       id,
       name,
@@ -55,7 +60,7 @@ const migrateNode = (value: unknown): SignalNode | undefined => {
       kind: rawKind as SignalNode["kind"],
       position,
       timelineOffset,
-      params
+      params: migratedParams
     } as SignalNode;
   }
 
