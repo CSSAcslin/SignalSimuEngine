@@ -6,12 +6,18 @@ import {
   connectGraphNodes,
   duplicateGraphNode,
   duplicateGraphNodes,
+  duplicateGraphGroups,
+  getGraphGroupNodeIds,
+  groupGraphNodes,
+  moveGraphGroups,
   moveGraphNodes,
+  removeGraphGroups,
   removeGraphEdge,
   removeGraphNode,
   removeGraphNodes,
   sampleGraph,
   setDisplayNode,
+  ungroupGraphGroups,
   wouldCreateCycle,
   type SignalGraph
 } from "../src/signal";
@@ -96,7 +102,28 @@ describe("graph editing helpers", () => {
     expect(multiply?.position.x).toBeLessThan(output?.position.x ?? 0);
   });
 
-  it("auto-layouts unconnected nodes into source operation and analysis zones", () => {
+  it("centers merge nodes between their inputs instead of top-aligning every layer", () => {
+    const laidOut = autoLayoutGraph({
+      nodes: [
+        { id: "s1", type: "source", kind: "sine", name: "S1", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "s2", type: "source", kind: "noise", name: "S2", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "s3", type: "source", kind: "constant", name: "S3", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
+        { id: "merge", type: "operation", kind: "add", name: "Merge", position: { x: 0, y: 0 }, timelineOffset: 0, params: {} }
+      ],
+      edges: [
+        { id: "s1-merge", from: "s1", to: "merge" },
+        { id: "s2-merge", from: "s2", to: "merge" },
+        { id: "s3-merge", from: "s3", to: "merge" }
+      ]
+    });
+    const y = (id: string) => laidOut.nodes.find((node) => node.id === id)?.position.y ?? 0;
+
+    expect(y("merge")).toBeGreaterThan(y("s1"));
+    expect(y("merge")).toBeLessThan(y("s3"));
+    expect(y("merge")).toBe(y("s2"));
+  });
+
+  it("auto-layouts independent nodes as a compact matrix instead of a vertical list", () => {
     const laidOut = autoLayoutGraph({
       nodes: [
         { id: "s1", type: "source", kind: "sine", name: "S1", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
@@ -113,19 +140,16 @@ describe("graph editing helpers", () => {
       ],
       edges: []
     });
-    const node = (id: string) => laidOut.nodes.find((item) => item.id === id);
+    const xValues = new Set(laidOut.nodes.map((node) => node.position.x));
+    const yValues = new Set(laidOut.nodes.map((node) => node.position.y));
+    const positions = new Set(laidOut.nodes.map((node) => `${node.position.x}:${node.position.y}`));
 
-    expect(node("s1")?.position.x).toBeLessThan(node("op1")?.position.x ?? 0);
-    expect(node("op1")?.position.x).toBeLessThan(node("a1")?.position.x ?? 0);
-    expect(node("s3")?.position.x).toBe(node("s1")?.position.x);
-    expect(node("op4")?.position.x).toBe(node("op1")?.position.x);
-    expect(node("a4")?.position.x).toBe(node("a1")?.position.x);
-    expect(node("s3")?.position.y).toBeGreaterThan(node("s1")?.position.y ?? 0);
-    expect(node("op4")?.position.y).toBeGreaterThan(node("op1")?.position.y ?? 0);
-    expect(node("a4")?.position.y).toBeGreaterThan(node("a1")?.position.y ?? 0);
+    expect(xValues.size).toBeGreaterThan(2);
+    expect(yValues.size).toBeGreaterThan(1);
+    expect(positions.size).toBe(laidOut.nodes.length);
   });
 
-  it("places unconnected layout zones below connected networks", () => {
+  it("keeps connected nodes in one workflow while arranging independent workflows without overlap", () => {
     const laidOut = autoLayoutGraph({
       nodes: [
         { id: "s1", type: "source", kind: "sine", name: "S1", position: { x: 0, y: 0 }, timelineOffset: 0, sampleRate: 1, length: 1, params: {} },
@@ -141,13 +165,19 @@ describe("graph editing helpers", () => {
       ]
     });
     const node = (id: string) => laidOut.nodes.find((item) => item.id === id);
-    const connectedMaxY = Math.max(node("s1")?.position.y ?? 0, node("op1")?.position.y ?? 0, node("out1")?.position.y ?? 0);
+    expect(node("s1")?.position.x).toBeLessThan(node("op1")?.position.x ?? 0);
+    expect(node("op1")?.position.x).toBeLessThan(node("out1")?.position.x ?? 0);
+    expect(new Set(laidOut.nodes.map((item) => `${item.position.x}:${item.position.y}`)).size).toBe(laidOut.nodes.length);
+  });
 
-    expect(node("loose-source")?.position.y).toBeGreaterThan(connectedMaxY);
-    expect(node("loose-op")?.position.y).toBeGreaterThan(connectedMaxY);
-    expect(node("loose-analysis")?.position.y).toBeGreaterThan(connectedMaxY);
-    expect(node("loose-source")?.position.x).toBeLessThan(node("loose-op")?.position.x ?? 0);
-    expect(node("loose-op")?.position.x).toBeLessThan(node("loose-analysis")?.position.x ?? 0);
+  it("keeps nodes inside an explicit group compact during auto layout", () => {
+    const grouped = groupGraphNodes(graph, ["a", "b"]);
+    const laidOut = autoLayoutGraph(grouped);
+    const a = laidOut.nodes.find((node) => node.id === "a");
+    const b = laidOut.nodes.find((node) => node.id === "b");
+
+    expect(Math.abs((b?.position.x ?? 0) - (a?.position.x ?? 0))).toBeLessThanOrEqual(224);
+    expect(Math.abs((b?.position.y ?? 0) - (a?.position.y ?? 0))).toBeLessThanOrEqual(126);
   });
 
   it("pins a display target independently from selected node", () => {
@@ -188,6 +218,80 @@ describe("graph editing helpers", () => {
 
     expect(edited.nodes.map((node) => node.id)).toEqual(["c"]);
     expect(edited.edges).toEqual([]);
+  });
+
+  it("groups, moves, and ungroups nodes without changing graph connectivity", () => {
+    const grouped = groupGraphNodes(graph, ["a", "b"]);
+    const groupId = grouped.groups?.[0]?.id as string;
+    const moved = moveGraphGroups(grouped, [groupId], { x: 25, y: 30 });
+    const ungrouped = ungroupGraphGroups(moved, [groupId]);
+
+    expect(grouped.groups?.[0]?.nodeIds).toEqual(["a", "b"]);
+    expect(moved.nodes.find((node) => node.id === "a")?.position).toEqual({ x: 25, y: 30 });
+    expect(moved.nodes.find((node) => node.id === "b")?.position).toEqual({ x: 125, y: 30 });
+    expect(ungrouped.groups).toEqual([]);
+    expect(ungrouped.edges).toEqual(graph.edges);
+  });
+
+  it("duplicates a group with its nodes and internal edges", () => {
+    const grouped = groupGraphNodes(graph, ["a", "b"]);
+    const duplicated = duplicateGraphGroups(grouped, [grouped.groups?.[0]?.id as string]);
+    const copiedGroup = duplicated.groups?.[1];
+
+    expect(copiedGroup?.nodeIds).toHaveLength(2);
+    expect(duplicated.nodes).toHaveLength(5);
+    expect(duplicated.edges.some((edge) => copiedGroup?.nodeIds.includes(edge.from) && copiedGroup.nodeIds.includes(edge.to))).toBe(true);
+  });
+
+  it("supports nested groups and resolves all descendant nodes", () => {
+    const child = groupGraphNodes(graph, ["a", "b"]);
+    const childId = child.groups?.[0]?.id as string;
+    const nested = groupGraphNodes(child, ["c"], [childId]);
+    const parent = nested.groups?.[nested.groups.length - 1];
+    const moved = moveGraphGroups(nested, [parent?.id as string], { x: 20, y: 20 });
+
+    expect(parent?.childGroupIds).toEqual([childId]);
+    expect(getGraphGroupNodeIds(nested, [parent?.id as string]).sort()).toEqual(["a", "b", "c"]);
+    expect(moved.nodes.map((node) => node.position)).toEqual([
+      { x: 20, y: 20 },
+      { x: 120, y: 20 },
+      { x: 220, y: 20 }
+    ]);
+  });
+
+  it("ungroups a parent while preserving its nested child group", () => {
+    const child = groupGraphNodes(graph, ["a", "b"]);
+    const childId = child.groups?.[0]?.id as string;
+    const nested = groupGraphNodes(child, ["c"], [childId]);
+    const parentId = nested.groups?.[nested.groups.length - 1]?.id as string;
+    const ungrouped = ungroupGraphGroups(nested, [parentId]);
+
+    expect(ungrouped.groups?.map((group) => group.id)).toEqual([childId]);
+    expect(ungrouped.nodes.map((node) => node.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("duplicates and deletes complete nested group trees", () => {
+    const child = groupGraphNodes(graph, ["a", "b"]);
+    const childId = child.groups?.[0]?.id as string;
+    const nested = groupGraphNodes(child, ["c"], [childId]);
+    const parentId = nested.groups?.[nested.groups.length - 1]?.id as string;
+    const duplicated = duplicateGraphGroups(nested, [parentId]);
+    const copiedParent = duplicated.groups?.find((group) => group.id.startsWith(`${parentId}-copy`));
+    const removed = removeGraphGroups(nested, [parentId]);
+
+    expect(copiedParent?.childGroupIds).toHaveLength(1);
+    expect(getGraphGroupNodeIds(duplicated, [copiedParent?.id as string])).toHaveLength(3);
+    expect(removed.nodes).toEqual([]);
+    expect(removed.groups).toEqual([]);
+  });
+
+  it("deletes grouped nodes and their connected edges", () => {
+    const grouped = groupGraphNodes(graph, ["a", "b"]);
+    const edited = removeGraphGroups(grouped, [grouped.groups?.[0]?.id as string]);
+
+    expect(edited.nodes.map((node) => node.id)).toEqual(["c"]);
+    expect(edited.edges).toEqual([]);
+    expect(edited.groups).toEqual([]);
   });
 
   it("returns explicit connection rejection reasons", () => {

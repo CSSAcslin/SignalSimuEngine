@@ -208,6 +208,14 @@ export type SignalEdge = {
   to: string;
 };
 
+export type GraphGroup = {
+  id: string;
+  name: string;
+  nodeIds: string[];
+  childGroupIds?: string[];
+  color?: string;
+};
+
 export type SignalGraph = {
   schemaVersion?: number;
   sampleRate?: number;
@@ -215,6 +223,7 @@ export type SignalGraph = {
   disabledNodeIds?: string[];
   nodes: SignalNode[];
   edges: SignalEdge[];
+  groups?: GraphGroup[];
   selectedNodeId?: string;
   displayNodeId?: string;
 };

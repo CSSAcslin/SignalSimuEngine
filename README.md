@@ -11,9 +11,9 @@ See [docs/user-manual.md](docs/user-manual.md) for the full user manual, GUI gui
 - React + TypeScript + Vite web workstation, with an optional Tauri desktop shell.
 - Local Python/FastAPI analysis backend for SciPy-powered STFT and CWT.
 - One-dimensional discrete signal protocol.
-- Source modules: sine, square, triangle, Gaussian pulse, pulse, chirp, white noise, constant, and inline import array.
+- Source modules: sine, square, triangle, Gaussian pulse, pulse, chirp, white noise, coherent/thermal photon counts, constant, custom source, and inline import array.
 - Operation modules: add, subtract, multiply, scale, delay, convolution, cross-correlation, normalization, multi-input custom expressions, and external executable modules.
-- Analysis modules: FFT spectrum, RMS, quantile summary, distribution histogram, SNR, dominant frequency, bandwidth, STFT, and CWT.
+- Analysis modules: FFT spectrum, RMS, quantile summary, distribution histogram, SNR, dominant frequency, bandwidth, normalized/raw G2 correlation, STFT, and CWT.
 - Three-column workstation UI with module library, node canvas, timeline, parameter inspector, and time/frequency charts.
 - Analysis backend status indicator for SciPy-powered modules.
 - Project JSON, signal CSV, NumPy `.npy`, analysis CSV/JSON, and Python reproduction script exports.
@@ -21,7 +21,9 @@ See [docs/user-manual.md](docs/user-manual.md) for the full user manual, GUI gui
 - Signal and analysis outputs include provenance metadata: source node, input nodes, params, sample rate, sample count, unit, and backend where relevant.
 - CSV import distinguishes `value-only` and `time,value` files and reports the chosen interpretation.
 - External Command nodes use `request.json` / `result.json` so packaged executables can act as signal-processing modules in the desktop shell.
-- The node canvas includes a clear action that removes all nodes and edges while preserving global sampling settings.
+- The node canvas includes multi-select, box selection, undo/redo, grouping and nested groups, live group dragging, automatic horizontal layout, fit view, and a clear action that preserves global sampling settings.
+- Advanced Canvas expands the graph editor to the full window. Node parameters and results open as movable floating panels instead of permanently occupying canvas space.
+- Node actions are available from either the three-dot button or the node context menu.
 
 ## Run
 

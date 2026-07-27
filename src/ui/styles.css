@@ -469,6 +469,24 @@ button {
   min-height: 0;
 }
 
+.canvas-shell.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  min-height: 100vh;
+  background: #f7fbfd;
+}
+
+.canvas-fullscreen-open {
+  overflow: hidden;
+}
+
+.canvas-shell.fullscreen .canvas-tools {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .canvas-tools {
   position: absolute;
   top: 10px;
@@ -500,6 +518,22 @@ button {
   font-weight: 650;
 }
 
+.canvas-shortcut-strip {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  z-index: 6;
+  border: 1px solid #d0e0e9;
+  border-radius: 7px;
+  padding: 6px 9px;
+  color: #52697c;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(25, 48, 70, 0.08);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .canvas-tools button {
   width: 28px;
   height: 28px;
@@ -515,6 +549,12 @@ button {
   color: #0369a1;
   border-color: #bae6fd;
   background: #f0f9ff;
+}
+
+.canvas-tools button.active {
+  color: #0369a1;
+  border-color: #7dd3fc;
+  background: #e0f2fe;
 }
 
 .canvas-tools button:disabled {
@@ -561,6 +601,24 @@ button {
   cursor: grabbing;
 }
 
+.node-canvas.tool-select {
+  cursor: default;
+}
+
+.node-canvas.tool-hand {
+  cursor: grab;
+}
+
+.node-canvas.dragging-selection,
+.node-canvas.dragging-selection .graph-node,
+.node-canvas.dragging-selection .graph-group-header {
+  cursor: grabbing;
+}
+
+.node-canvas.dragging-selection .graph-node {
+  will-change: transform;
+}
+
 .canvas-transform {
   position: absolute;
   inset: 0;
@@ -575,6 +633,7 @@ button {
   width: 100%;
   height: 100%;
   pointer-events: auto;
+  z-index: 2;
 }
 
 .edge-layer path {
@@ -621,6 +680,7 @@ button {
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(28, 54, 79, 0.12);
   cursor: grab;
+  z-index: 3;
 }
 
 .graph-node.source {
@@ -799,6 +859,91 @@ button {
   border-radius: 5px;
   background: rgba(14, 165, 233, 0.12);
   pointer-events: none;
+}
+
+.graph-group {
+  position: absolute;
+  z-index: 1;
+  border: 1px solid hsl(var(--group-hue, 195) 55% 48% / 0.48);
+  border-radius: 8px;
+  background: hsl(var(--group-hue, 195) 70% 94% / 0.32);
+  pointer-events: none;
+}
+
+.graph-group.selected {
+  border-color: hsl(var(--group-hue, 195) 70% 42%);
+  box-shadow: 0 0 0 3px hsl(var(--group-hue, 195) 75% 55% / 0.15);
+}
+
+.graph-group-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 28px;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 7px 7px 5px 5px;
+  padding: 0 9px;
+  color: hsl(var(--group-hue, 195) 68% 28%);
+  background: hsl(var(--group-hue, 195) 72% 94% / 0.97);
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+}
+
+.group-context-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 190px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #c8d8e2;
+  border-radius: 8px;
+  padding: 5px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 40, 62, 0.22);
+}
+
+.group-context-menu button {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  color: #334155;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 720;
+  text-align: left;
+}
+
+.group-context-menu button:hover {
+  color: #0369a1;
+  background: #f0f9ff;
+}
+
+.group-context-menu button.danger {
+  color: #b91c1c;
+}
+
+.graph-group-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-group-header small {
+  border-radius: 999px;
+  padding: 1px 5px;
+  color: #0369a1;
+  background: #ffffff;
+  font-size: 9px;
 }
 
 .node-menu-trigger {
@@ -2366,6 +2511,271 @@ button {
   background: #f8fbfd;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.floating-panel {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #b9ceda;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 54px rgba(15, 40, 62, 0.24);
+}
+
+.floating-panel-title {
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid #d8e5ec;
+  padding: 0 7px 0 10px;
+  color: #284760;
+  background: #f7fbfd;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.floating-panel-title strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floating-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.floating-panel-title button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #64748b;
+  background: transparent;
+}
+
+.floating-panel.maximized {
+  inset: 24px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none;
+  max-height: none;
+  resize: none;
+}
+
+.floating-panel-title button:hover {
+  border-color: #cbd5e1;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.floating-panel-content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.floating-inspector {
+  width: 350px;
+  height: min(760px, calc(100vh - 96px));
+}
+
+.floating-inspector .inspector {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.floating-inspector .panel-title {
+  display: none;
+}
+
+.floating-results {
+  width: min(920px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 72px));
+  min-width: 560px;
+  min-height: 400px;
+  resize: both;
+}
+
+.floating-results .floating-panel-content {
+  overflow: hidden;
+}
+
+.floating-result-toolbar {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 6px 10px;
+}
+
+.floating-result-toolbar button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #d4e0e8;
+  border-radius: 6px;
+  padding: 0 9px;
+  color: #475569;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.floating-result-toolbar button.active {
+  border-color: #7dd3fc;
+  color: #0369a1;
+  background: #f0f9ff;
+}
+
+.floating-result-plot {
+  height: calc(100% - 42px);
+  min-height: 0;
+}
+
+.floating-result-plot > .axis-chart {
+  height: 100%;
+  margin-top: 0;
+}
+
+.floating-result-plot > .spectrum-line-panel,
+.group-analysis-view > .spectrum-line-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.floating-result-plot > .spectrum-line-panel > .axis-chart,
+.group-analysis-view > .spectrum-line-panel > .axis-chart {
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.group-results-panel {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+
+.group-results-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  border-bottom: 1px solid #dbe7ee;
+  padding: 6px 10px;
+}
+
+.group-results-tabs button {
+  min-height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid #d4e0e8;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #52697c;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.group-results-tabs button.active {
+  border-color: #7dd3fc;
+  color: #0369a1;
+  background: #f0f9ff;
+}
+
+.group-results-content,
+.group-series-view,
+.group-analysis-view {
+  min-height: 0;
+  height: 100%;
+}
+
+.group-series-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 8px 12px 10px;
+}
+
+.group-series-view > .axis-chart {
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.group-results-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  min-height: 28px;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.group-results-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.group-results-legend i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.group-results-legend.compact {
+  min-width: 0;
+  max-width: 46%;
+  margin-left: auto;
+}
+
+.group-metric-grid {
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.group-metric-grid > section {
+  min-width: 0;
+  border: 1px solid #dbe7ee;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbfd;
+}
+
+.group-metric-grid > section > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #284760;
+  font-size: 11px;
+}
+
+.group-analysis-view {
+  overflow: auto;
+  padding: 10px 12px;
 }
 
 @media (max-width: 1220px) {

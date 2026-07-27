@@ -9,7 +9,9 @@ import {
   Clock,
   Database,
   Copy,
+  Eraser,
   Eye,
+  Expand,
   FileCode,
   FileJson,
   FlaskConical,
@@ -18,15 +20,19 @@ import {
   GitBranch,
   Hand,
   Hash,
+  Layers3,
   Maximize2,
+  Minimize2,
   Minus,
   MoreVertical,
+  MousePointer2,
   PanelRight,
   Plus,
   Radical,
   Repeat,
   Redo2,
   Save,
+  Scan,
   Search,
   Shuffle,
   SkipBack,
@@ -41,18 +47,20 @@ import {
   Triangle,
   Trash2,
   Undo2,
+  Ungroup,
   Upload,
   ZoomIn,
   ZoomOut,
-  Waves
+  Waves,
+  Workflow
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCustomExpressionInputRows, isEditableEventTarget } from "./inspectorHelpers";
+import { FloatingPanel, type FloatingPanelPosition } from "./FloatingPanel";
 import { scientificPlotPalette, ScientificHistogramPlot, ScientificSeriesPlot, ScientificSpectrumPlot } from "./ScientificPlot";
 import {
-  autoLayoutGraph,
   canConnectGraphNodes,
   clearGraphCanvas,
   clampSelection,
@@ -66,6 +74,7 @@ import {
   decibels,
   duplicateGraphNode,
   duplicateGraphNodes,
+  duplicateGraphGroups,
   evaluateGraph,
   fftSpectrum,
   exportAnalysisCsv,
@@ -74,8 +83,11 @@ import {
   exportNpyFloat64,
   exportPython,
   getModuleDefinition,
+  getGraphGroupNodeIds,
+  groupGraphNodes,
   moduleDefinitions,
   moveGraphNodes,
+  moveGraphGroups,
   panSelection,
   panValueRange,
   panView,
@@ -86,11 +98,13 @@ import {
   removeGraphEdge,
   removeGraphNode,
   removeGraphNodes,
+  removeGraphGroups,
   createTimeFrequencyRequest,
   createAnalysisPlotModel,
   createSignalPlotModel,
   isRandomSourceKind,
   isTimeFrequencyNode,
+  layoutSignalGraph,
   runExternalCommandBackend,
   runTimeFrequencyBackend,
   sampleGraph,
@@ -98,6 +112,7 @@ import {
   setDisplayNode,
   snapTimeToSample,
   summarizeAnalysisResult,
+  ungroupGraphGroups,
   serializeProjectGraph,
   type AnalysisBackendStatus,
   type ModuleDefinition,
@@ -106,6 +121,8 @@ import {
   type AnalysisResult,
   type ExternalCommandRequest,
   type ExternalCommandSignalResult,
+  type GraphGroup,
+  type LayoutPoint,
   type Signal,
   type SignalGraph,
   type SignalNode,
@@ -552,6 +569,133 @@ const AnalysisPanel = ({ analysis }: { analysis?: AnalysisResult }) => {
   return <SpectrumBars spectrumData={{ frequency: analysis.frequency, magnitude: analysis.magnitude }} mode="linear" />;
 };
 
+const GroupResultsPanel = ({
+  group,
+  nodeIds,
+  nodes,
+  signals,
+  analyses
+}: {
+  group: GraphGroup;
+  nodeIds: string[];
+  nodes: SignalNode[];
+  signals: Map<string, Signal>;
+  analyses: Map<string, AnalysisResult>;
+}) => {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const lineBuckets = new Map<string, Extract<ScientificPlotModel, { kind: "line" }>[]>();
+  nodeIds.forEach((id) => {
+    const signal = signals.get(id);
+    if (!signal) return;
+    const plot = createSignalPlotModel(signal);
+    if (plot.kind !== "line") return;
+    const key = `${plot.xAxis.kind}:${plot.xAxis.unit}:${plot.xAxis.linkToMaster}`;
+    lineBuckets.set(key, [...(lineBuckets.get(key) ?? []), { ...plot, title: nodeMap.get(id)?.name ?? plot.title }]);
+  });
+  const metricEntries = nodeIds
+    .map((id) => ({ node: nodeMap.get(id), analysis: analyses.get(id) }))
+    .filter(
+      (entry): entry is { node: SignalNode; analysis: Extract<AnalysisResult, { type: "scalar" | "summary" }> } =>
+        Boolean(entry.node && entry.analysis && (entry.analysis.type === "scalar" || entry.analysis.type === "summary"))
+    );
+  const visualEntries = nodeIds
+    .map((id) => ({ node: nodeMap.get(id), analysis: analyses.get(id) }))
+    .filter(
+      (entry): entry is { node: SignalNode; analysis: AnalysisResult } =>
+        Boolean(entry.node && entry.analysis && entry.analysis.type !== "scalar" && entry.analysis.type !== "summary")
+    );
+  const lineViews = [...lineBuckets.entries()].map(([key, plots], index) => ({
+    key: `line:${key}`,
+    label: plots[0]?.xAxis.kind === "frequency" ? `Frequency ${index + 1}` : plots[0]?.xAxis.kind === "delay" ? `Delay ${index + 1}` : `Series ${index + 1}`,
+    plots
+  }));
+  const views = [
+    ...lineViews.map((view) => ({ key: view.key, label: view.label })),
+    ...(metricEntries.length > 0 ? [{ key: "metrics", label: "Metrics" }] : []),
+    ...visualEntries.map((entry) => ({ key: `analysis:${entry.node.id}`, label: entry.node.name }))
+  ];
+  const [activeKey, setActiveKey] = useState(views[0]?.key ?? "empty");
+  const [xRange, setXRange] = useState<ValueRange>();
+  const [yRange, setYRange] = useState<ValueRange>();
+  const [cursorX, setCursorX] = useState<number>();
+  useEffect(() => {
+    if (!views.some((view) => view.key === activeKey)) setActiveKey(views[0]?.key ?? "empty");
+    setXRange(undefined);
+    setYRange(undefined);
+  }, [activeKey, group.id, views.map((view) => view.key).join("|")]);
+
+  const activeLine = lineViews.find((view) => view.key === activeKey);
+  const activeVisual = visualEntries.find((entry) => `analysis:${entry.node.id}` === activeKey);
+
+  return (
+    <div className="group-results-panel">
+      <div className="group-results-tabs">
+        {views.map((view) => (
+          <button key={view.key} className={activeKey === view.key ? "active" : ""} onClick={() => setActiveKey(view.key)}>
+            {view.label}
+          </button>
+        ))}
+      </div>
+      <div className="group-results-content">
+        {activeLine && activeLine.plots.length > 0 ? (
+          <div className="group-series-view">
+            <div className="group-results-legend">
+              {activeLine.plots.map((plot, index) => (
+                <span key={plot.id}>
+                  <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
+                  {plot.title}
+                </span>
+              ))}
+            </div>
+            <ScientificSeriesPlot
+              model={activeLine.plots[0]}
+              comparisons={activeLine.plots.slice(1)}
+              xRange={xRange}
+              yRange={yRange}
+              cursorX={cursorX ?? activeLine.plots[0].x[0]}
+              maxPreviewPoints={1200}
+              onXRange={setXRange}
+              onYRange={setYRange}
+              onCursorX={setCursorX}
+            />
+          </div>
+        ) : activeKey === "metrics" ? (
+          <div className="group-metric-grid">
+            {metricEntries.map(({ node, analysis }) => (
+              <section key={node.id}>
+                <strong>{node.name}</strong>
+                {analysis.type === "scalar" ? (
+                  <div className="analysis-metric-card compact">
+                    <span>{analysis.label}</span>
+                    <strong>{formatValue(analysis.value)}</strong>
+                    <em>{analysis.unit}</em>
+                  </div>
+                ) : (
+                  <div className="analysis-summary-grid">
+                    {analysis.metrics.map((metric) => (
+                      <div className="analysis-metric-card compact" key={metric.label}>
+                        <span>{metric.label}</span>
+                        <strong>{formatValue(metric.value)}</strong>
+                        <em>{metric.unit}</em>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))}
+          </div>
+        ) : activeVisual ? (
+          <div className="group-analysis-view">
+            <AnalysisPanel analysis={activeVisual.analysis} />
+          </div>
+        ) : (
+          <div className="chart-empty">No group results are available yet.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const InspectorAnalysisResult = ({ analysis }: { analysis: AnalysisResult }) => {
   const summary = summarizeAnalysisResult(analysis);
   const spectrumPoints =
@@ -785,21 +929,38 @@ const ModuleLibrary = ({ onAdd }: { onAdd: (definition: ModuleDefinition) => voi
 
 const NodeCanvas = ({
   graph,
+  mode,
+  tool,
   selectedNodeIds,
+  selectedGroupIds,
   errors,
   signals,
   previewView,
   canvasView,
+  fitVersion,
+  layoutRunning,
   connectFromId,
   dragConnection,
   selectedEdgeId,
   openNodeMenuId,
   connectionError,
   onSelect,
+  onInspectNode,
   onSelectMany,
+  onSelectGroup,
   onSelectEdge,
   onAdd,
   onMoveNodes,
+  onMoveGroups,
+  onDuplicateGroup,
+  onDeleteGroup,
+  onUngroupGroup,
+  onRenameGroup,
+  onOpenGroupResults,
+  onGroup,
+  onUngroup,
+  onDuplicateSelection,
+  onDeleteSelection,
   onDuplicateNode,
   onDeleteNode,
   onSetDisplayNode,
@@ -812,27 +973,50 @@ const NodeCanvas = ({
   onUndo,
   onRedo,
   onClear,
+  onTool,
+  onToggleInspector,
+  onToggleResults,
+  inspectorVisible,
+  resultsVisible,
+  onToggleFullscreen,
   canUndo,
   canRedo,
   canClear,
   onCanvasView
 }: {
   graph: SignalGraph;
+  mode: "embedded" | "fullscreen";
+  tool: "select" | "hand";
   selectedNodeIds: string[];
+  selectedGroupIds: string[];
   errors: Map<string, string>;
   signals: Map<string, Signal>;
   previewView: TimeView;
   canvasView: { x: number; y: number; zoom: number };
+  fitVersion: number;
+  layoutRunning: boolean;
   connectFromId?: string;
   dragConnection?: { fromId: string; x: number; y: number };
   selectedEdgeId?: string;
   openNodeMenuId?: string;
   connectionError?: string;
   onSelect: (id: string, append?: boolean) => void;
-  onSelectMany: (ids: string[]) => void;
+  onInspectNode: (id: string, anchor: LayoutPoint) => void;
+  onSelectMany: (ids: string[], append?: boolean) => void;
+  onSelectGroup: (id: string, append?: boolean) => void;
   onSelectEdge: (id: string) => void;
   onAdd: (definition: ModuleDefinition, position: { x: number; y: number }) => void;
   onMoveNodes: (ids: string[], delta: { x: number; y: number }) => void;
+  onMoveGroups: (ids: string[], delta: { x: number; y: number }) => void;
+  onDuplicateGroup: (id: string) => void;
+  onDeleteGroup: (id: string) => void;
+  onUngroupGroup: (id: string) => void;
+  onRenameGroup: (id: string, name: string) => void;
+  onOpenGroupResults: (id: string) => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onDuplicateSelection: () => void;
+  onDeleteSelection: () => void;
   onDuplicateNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
   onSetDisplayNode: (id: string) => void;
@@ -845,19 +1029,150 @@ const NodeCanvas = ({
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
+  onTool: (tool: "select" | "hand") => void;
+  onToggleInspector: () => void;
+  onToggleResults: () => void;
+  inspectorVisible: boolean;
+  resultsVisible: boolean;
+  onToggleFullscreen: () => void;
   canUndo: boolean;
   canRedo: boolean;
   canClear: boolean;
   onCanvasView: (view: { x: number; y: number; zoom: number }) => void;
 }) => {
   const nodeMap = new Map(graph.nodes.map((node) => [node.id, node]));
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [panStart, setPanStart] = useState<{ x: number; y: number; viewX: number; viewY: number }>();
   const [blankStart, setBlankStart] = useState<{ x: number; y: number; moved: boolean }>();
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; currentX: number; currentY: number }>();
-  const [nodeDragStart, setNodeDragStart] = useState<{ ids: string[]; nodeId: string; startPosition: { x: number; y: number } }>();
+  const [dragPreview, setDragPreview] = useState<{
+    nodeIds: string[];
+    delta: LayoutPoint;
+  }>();
+  const activeDragRef = useRef<{
+    pointerId: number;
+    kind: "nodes" | "groups";
+    ids: string[];
+    nodeIds: string[];
+    primaryId?: string;
+    clientX: number;
+    clientY: number;
+  } | undefined>(undefined);
+  const pendingDragDeltaRef = useRef<LayoutPoint>({ x: 0, y: 0 });
+  const dragFrameRef = useRef<number | undefined>(undefined);
+  const suppressClickRef = useRef(false);
+  const [groupMenu, setGroupMenu] = useState<{ groupId: string; x: number; y: number }>();
   const [localOpenMenuId, setLocalOpenMenuId] = useState<string | undefined>(openNodeMenuId);
   const selectedSet = new Set(selectedNodeIds);
+  const selectedGroupSet = new Set(selectedGroupIds);
   const disabledSet = new Set(graph.disabledNodeIds ?? []);
+  const previewNodeSet = new Set(dragPreview?.nodeIds ?? []);
+  const nodePosition = (node: SignalNode) =>
+    previewNodeSet.has(node.id) && dragPreview
+      ? { x: node.position.x + dragPreview.delta.x, y: node.position.y + dragPreview.delta.y }
+      : node.position;
+  const groupBounds = (graph.groups ?? [])
+    .map((group) => {
+      const resolvedNodeIds = getGraphGroupNodeIds(graph, [group.id]);
+      const nodes = resolvedNodeIds.map((id) => nodeMap.get(id)).filter((node): node is SignalNode => Boolean(node));
+      if (nodes.length < 2) return undefined;
+      const padding = 22;
+      const headerHeight = 28;
+      const minX = Math.max(4, Math.min(...nodes.map((node) => nodePosition(node).x)) - padding);
+      const minY = Math.max(4, Math.min(...nodes.map((node) => nodePosition(node).y)) - padding - headerHeight);
+      const maxX = Math.max(...nodes.map((node) => nodePosition(node).x + 176)) + padding;
+      const maxY = Math.max(...nodes.map((node) => nodePosition(node).y + 112)) + padding;
+      return { group, memberCount: resolvedNodeIds.length, x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    })
+    .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+    .sort((left, right) => right.width * right.height - left.width * left.height);
+  const groupAtPoint = (x: number, y: number) =>
+    [...groupBounds]
+      .reverse()
+      .find((bounds) => x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height);
+  const groupHue = (id: string) => 170 + [...id].reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) % 120, 0);
+  const beginPointerDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+    kind: "nodes" | "groups",
+    ids: string[],
+    nodeIds: string[],
+    primaryId?: string
+  ) => {
+    if (event.button !== 0 || nodeIds.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.current;
+    canvas?.setPointerCapture(event.pointerId);
+    pendingDragDeltaRef.current = { x: 0, y: 0 };
+    activeDragRef.current = {
+      pointerId: event.pointerId,
+      kind,
+      ids,
+      nodeIds,
+      primaryId,
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    setDragPreview({ nodeIds, delta: { x: 0, y: 0 } });
+  };
+  const updatePointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = activeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return false;
+    const delta = {
+      x: (event.clientX - drag.clientX) / canvasView.zoom,
+      y: (event.clientY - drag.clientY) / canvasView.zoom
+    };
+    pendingDragDeltaRef.current = delta;
+    if (dragFrameRef.current === undefined) {
+      dragFrameRef.current = requestAnimationFrame(() => {
+        dragFrameRef.current = undefined;
+        const current = activeDragRef.current;
+        if (current) setDragPreview({ nodeIds: current.nodeIds, delta: pendingDragDeltaRef.current });
+      });
+    }
+    return true;
+  };
+  const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = activeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return false;
+    if (dragFrameRef.current !== undefined) cancelAnimationFrame(dragFrameRef.current);
+    dragFrameRef.current = undefined;
+    const delta = pendingDragDeltaRef.current;
+    const moved = Math.hypot(delta.x, delta.y) > 3 / canvasView.zoom;
+    activeDragRef.current = undefined;
+    setDragPreview(undefined);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (moved) {
+      suppressClickRef.current = true;
+      if (drag.kind === "groups") onMoveGroups(drag.ids, delta);
+      else onMoveNodes(drag.ids, delta);
+      requestAnimationFrame(() => {
+        suppressClickRef.current = false;
+      });
+    } else if (drag.kind === "nodes" && drag.primaryId && drag.ids.length === 1) {
+      const node = nodeMap.get(drag.primaryId);
+      const canvas = canvasRef.current;
+      if (node && canvas) {
+        const position = nodePosition(node);
+        const rect = canvas.getBoundingClientRect();
+        onInspectNode(drag.primaryId, {
+          x: rect.left + canvasView.x + (position.x + 176) * canvasView.zoom + 12,
+          y: rect.top + canvasView.y + position.y * canvasView.zoom
+        });
+      }
+    }
+    return true;
+  };
+  const canvasWorldWidth = Math.max(
+    1600,
+    ...graph.nodes.map((node) => nodePosition(node).x + 360),
+    (dragConnection?.x ?? 0) + 240
+  );
+  const canvasWorldHeight = Math.max(
+    900,
+    ...graph.nodes.map((node) => nodePosition(node).y + 260),
+    (dragConnection?.y ?? 0) + 180
+  );
   const signalPath = (signal?: Signal) => {
     if (!signal || signal.values.length === 0) return "";
     const points = downsample(selectSignalWindow(signal, previewView).values, 32);
@@ -872,12 +1187,12 @@ const NodeCanvas = ({
       })
       .join(" ");
   };
-  const fitAllNodes = (event: ReactMouseEvent<HTMLButtonElement>) => {
+  const fitAllNodes = () => {
     if (graph.nodes.length === 0) {
       onCanvasView({ x: 0, y: 0, zoom: 1 });
       return;
     }
-    const canvas = event.currentTarget.closest(".canvas-shell")?.querySelector(".node-canvas") as HTMLElement | null;
+    const canvas = canvasRef.current;
     const width = canvas?.clientWidth ?? 900;
     const height = canvas?.clientHeight ?? 520;
     const nodeWidth = 190;
@@ -896,10 +1211,24 @@ const NodeCanvas = ({
       zoom
     });
   };
+  useEffect(() => {
+    if (fitVersion > 0) fitAllNodes();
+  }, [fitVersion]);
 
   return (
-    <div className="canvas-shell">
+    <div className={`canvas-shell ${mode}`}>
       <div className="canvas-tools">
+        {mode === "fullscreen" ? (
+          <>
+            <button className={tool === "select" ? "active" : ""} onClick={() => onTool("select")} title="Select and box select">
+              <MousePointer2 size={14} />
+            </button>
+            <button className={tool === "hand" ? "active" : ""} onClick={() => onTool("hand")} title="Pan canvas">
+              <Hand size={14} />
+            </button>
+            <i className="canvas-tool-separator" />
+          </>
+        ) : null}
         <button onClick={() => onCanvasView({ ...canvasView, zoom: Math.min(1.6, canvasView.zoom + 0.1) })} title="Zoom in">
           <ZoomIn size={14} />
         </button>
@@ -907,10 +1236,10 @@ const NodeCanvas = ({
           <ZoomOut size={14} />
         </button>
         <button onClick={fitAllNodes} title="Fit all nodes">
-          <Maximize2 size={14} />
+          <Scan size={14} />
         </button>
-        <button onClick={onAutoLayout} title="Auto layout">
-          <Focus size={14} />
+        <button onClick={onAutoLayout} disabled={layoutRunning} title={layoutRunning ? "Computing layout" : "Auto layout"}>
+          {layoutRunning ? <span className="spinner tiny" /> : <Workflow size={14} />}
         </button>
         <i className="canvas-tool-separator" />
         <button onClick={onUndo} disabled={!canUndo} title="Undo">
@@ -919,17 +1248,53 @@ const NodeCanvas = ({
         <button onClick={onRedo} disabled={!canRedo} title="Redo">
           <Redo2 size={14} />
         </button>
+        {mode === "fullscreen" ? (
+          <>
+            <i className="canvas-tool-separator" />
+            <button onClick={onGroup} disabled={selectedNodeIds.length + selectedGroupIds.length < 2} title="Group selected nodes and groups (Ctrl+G)">
+              <Layers3 size={14} />
+            </button>
+            <button onClick={onUngroup} disabled={selectedGroupIds.length === 0} title="Ungroup selection (Ctrl+Shift+G)">
+              <Ungroup size={14} />
+            </button>
+            <button onClick={onDuplicateSelection} disabled={selectedNodeIds.length === 0 && selectedGroupIds.length === 0} title="Duplicate selection">
+              <Copy size={14} />
+            </button>
+            <button onClick={onDeleteSelection} disabled={selectedNodeIds.length === 0 && selectedGroupIds.length === 0 && !selectedEdgeId} title="Delete selection">
+              <Trash2 size={14} />
+            </button>
+          </>
+        ) : null}
         <i className="canvas-tool-separator" />
         <button onClick={onClear} disabled={!canClear} title="Clear canvas">
-          <Trash2 size={14} />
+          <Eraser size={14} />
         </button>
+        {mode === "fullscreen" ? (
+          <>
+            <i className="canvas-tool-separator" />
+            <button className={inspectorVisible ? "active" : ""} onClick={onToggleInspector} title="Toggle inspector">
+              <PanelRight size={14} />
+            </button>
+            <button className={resultsVisible ? "active" : ""} onClick={onToggleResults} title="Toggle results">
+              <Activity size={14} />
+            </button>
+            <button onClick={onToggleFullscreen} title="Exit advanced canvas">
+              <Minimize2 size={14} />
+            </button>
+          </>
+        ) : (
+          <button onClick={onToggleFullscreen} title="Open advanced canvas">
+            <Expand size={14} />
+          </button>
+        )}
         <span>
           <Hand size={13} />
           {Math.round(canvasView.zoom * 100)}%
         </span>
       </div>
       <div
-      className="node-canvas"
+      ref={canvasRef}
+      className={`node-canvas ${mode === "fullscreen" ? `tool-${tool}` : ""} ${dragPreview ? "dragging-selection" : ""}`}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         const kind = event.dataTransfer.getData("module-kind");
@@ -938,13 +1303,49 @@ const NodeCanvas = ({
         const rect = event.currentTarget.getBoundingClientRect();
         onAdd(definition, { x: (event.clientX - rect.left - canvasView.x) / canvasView.zoom - 80, y: (event.clientY - rect.top - canvasView.y) / canvasView.zoom - 36 });
       }}
-      onMouseDown={(event) => {
+      onPointerDown={(event) => {
         const target = event.target as HTMLElement;
-        if (event.button !== 0 || target.closest(".graph-node, .node-port, .canvas-tools, path")) return;
-        if (event.shiftKey) {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const x = (event.clientX - rect.left - canvasView.x) / canvasView.zoom;
-          const y = (event.clientY - rect.top - canvasView.y) / canvasView.zoom;
+        if (event.button !== 0 || target.closest(".graph-node, .graph-group-header, .node-port, .canvas-tools, path")) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const hitGroup = groupAtPoint(
+          (event.clientX - rect.left - canvasView.x) / canvasView.zoom,
+          (event.clientY - rect.top - canvasView.y) / canvasView.zoom
+        );
+        if (!hitGroup) return;
+        const isSelected = selectedGroupSet.has(hitGroup.group.id);
+        const ids = event.shiftKey
+          ? isSelected
+            ? selectedGroupIds.filter((id) => id !== hitGroup.group.id)
+            : [...selectedGroupIds, hitGroup.group.id]
+          : isSelected
+            ? selectedGroupIds
+            : [hitGroup.group.id];
+        if (event.shiftKey || !isSelected) onSelectGroup(hitGroup.group.id, event.shiftKey);
+        if (!ids.includes(hitGroup.group.id)) return;
+        beginPointerDrag(event, "groups", ids, getGraphGroupNodeIds(graph, ids));
+      }}
+      onPointerMove={(event) => {
+        updatePointerDrag(event);
+      }}
+      onPointerUp={(event) => {
+        finishPointerDrag(event);
+      }}
+      onPointerCancel={(event) => {
+        finishPointerDrag(event);
+      }}
+      onMouseDown={(event) => {
+        if (activeDragRef.current) return;
+        const target = event.target as HTMLElement;
+        if (event.button !== 0 || target.closest(".graph-node, .graph-group-header, .node-port, .canvas-tools, path")) return;
+        setGroupMenu(undefined);
+        const rect = event.currentTarget.getBoundingClientRect();
+        const worldX = (event.clientX - rect.left - canvasView.x) / canvasView.zoom;
+        const worldY = (event.clientY - rect.top - canvasView.y) / canvasView.zoom;
+        if (groupAtPoint(worldX, worldY)) return;
+        const shouldSelect = mode === "fullscreen" ? tool === "select" : event.shiftKey;
+        if (shouldSelect) {
+          const x = worldX;
+          const y = worldY;
           setSelectionBox({ x, y, currentX: x, currentY: y });
           return;
         }
@@ -952,6 +1353,7 @@ const NodeCanvas = ({
         setPanStart({ x: event.clientX, y: event.clientY, viewX: canvasView.x, viewY: canvasView.y });
       }}
       onMouseMove={(event) => {
+        if (activeDragRef.current) return;
         if (blankStart && Math.hypot(event.clientX - blankStart.x, event.clientY - blankStart.y) > 4) {
           setBlankStart({ ...blankStart, moved: true });
         }
@@ -975,17 +1377,17 @@ const NodeCanvas = ({
           });
         }
       }}
-      onMouseUp={() => {
+      onMouseUp={(event) => {
+        if (activeDragRef.current) return;
         if (selectionBox) {
           const left = Math.min(selectionBox.x, selectionBox.currentX);
           const right = Math.max(selectionBox.x, selectionBox.currentX);
           const top = Math.min(selectionBox.y, selectionBox.currentY);
           const bottom = Math.max(selectionBox.y, selectionBox.currentY);
-          onSelectMany(
-            graph.nodes
+          const boxedIds = graph.nodes
               .filter((node) => node.position.x + 176 >= left && node.position.x <= right && node.position.y + 70 >= top && node.position.y <= bottom)
-              .map((node) => node.id)
-          );
+              .map((node) => node.id);
+          onSelectMany(event.shiftKey ? [...new Set([...selectedNodeIds, ...boxedIds])] : boxedIds, event.shiftKey);
           setSelectionBox(undefined);
         }
         if (blankStart && !blankStart.moved) onSelectMany([]);
@@ -994,9 +1396,23 @@ const NodeCanvas = ({
         onDragConnect(undefined);
       }}
       onMouseLeave={() => {
+        if (activeDragRef.current) return;
         setPanStart(undefined);
         setSelectionBox(undefined);
         setBlankStart(undefined);
+      }}
+      onContextMenu={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest(".graph-node, path, .canvas-tools")) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const hitGroup = groupAtPoint(
+          (event.clientX - rect.left - canvasView.x) / canvasView.zoom,
+          (event.clientY - rect.top - canvasView.y) / canvasView.zoom
+        );
+        if (!hitGroup) return;
+        event.preventDefault();
+        onSelectGroup(hitGroup.group.id);
+        setGroupMenu({ groupId: hitGroup.group.id, x: event.clientX, y: event.clientY });
       }}
       onWheel={(event) => {
         if (!event.shiftKey) return;
@@ -1005,16 +1421,69 @@ const NodeCanvas = ({
         onCanvasView({ ...canvasView, zoom });
       }}
     >
-      <div className="canvas-transform" style={{ transform: `translate(${canvasView.x}px, ${canvasView.y}px) scale(${canvasView.zoom})` }}>
+      <div
+        className="canvas-transform"
+        style={{
+          width: canvasWorldWidth,
+          height: canvasWorldHeight,
+          transform: `translate(${canvasView.x}px, ${canvasView.y}px) scale(${canvasView.zoom})`
+        }}
+      >
+      {groupBounds.map(({ group, memberCount, x, y, width, height }) => (
+        <div
+          key={group.id}
+          className={`graph-group ${selectedGroupSet.has(group.id) ? "selected" : ""}`}
+          style={{
+            left: x,
+            top: y,
+            width,
+            height,
+            "--group-hue": groupHue(group.id)
+          } as CSSProperties}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (suppressClickRef.current) return;
+            onSelectGroup(group.id, event.shiftKey);
+          }}
+        >
+          <div
+            className="graph-group-header"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (suppressClickRef.current) return;
+              onSelectGroup(group.id, event.shiftKey);
+            }}
+            onPointerDown={(event) => {
+              const isSelected = selectedGroupSet.has(group.id);
+              const ids = event.shiftKey
+                ? isSelected
+                  ? selectedGroupIds.filter((id) => id !== group.id)
+                  : [...selectedGroupIds, group.id]
+                : isSelected
+                  ? selectedGroupIds
+                  : [group.id];
+              if (event.shiftKey || !isSelected) onSelectGroup(group.id, event.shiftKey);
+              if (!ids.includes(group.id)) return;
+              beginPointerDrag(event, "groups", ids, getGraphGroupNodeIds(graph, ids));
+            }}
+          >
+            <Layers3 size={13} />
+            <span>{group.name}</span>
+            <small>{memberCount}</small>
+          </div>
+        </div>
+      ))}
       <svg className="edge-layer">
         {graph.edges.map((edge) => {
           const from = nodeMap.get(edge.from);
           const to = nodeMap.get(edge.to);
           if (!from || !to) return null;
-          const startX = from.position.x + 176;
-          const startY = from.position.y + 48;
-          const endX = to.position.x;
-          const endY = to.position.y + 48;
+          const fromPosition = nodePosition(from);
+          const toPosition = nodePosition(to);
+          const startX = fromPosition.x + 176;
+          const startY = fromPosition.y + 48;
+          const endX = toPosition.x;
+          const endY = toPosition.y + 48;
           const mid = (endX - startX) / 2;
           return (
             <path
@@ -1031,35 +1500,42 @@ const NodeCanvas = ({
         {dragConnection ? (
           <path
             className="draft-edge"
-            d={`M ${(nodeMap.get(dragConnection.fromId)?.position.x ?? 0) + 176} ${(nodeMap.get(dragConnection.fromId)?.position.y ?? 0) + 48} C ${dragConnection.x - 80} ${(nodeMap.get(dragConnection.fromId)?.position.y ?? 0) + 48}, ${dragConnection.x - 60} ${dragConnection.y}, ${dragConnection.x} ${dragConnection.y}`}
+            d={`M ${nodeMap.get(dragConnection.fromId) ? nodePosition(nodeMap.get(dragConnection.fromId) as SignalNode).x + 176 : 176} ${nodeMap.get(dragConnection.fromId) ? nodePosition(nodeMap.get(dragConnection.fromId) as SignalNode).y + 48 : 48} C ${dragConnection.x - 80} ${nodeMap.get(dragConnection.fromId) ? nodePosition(nodeMap.get(dragConnection.fromId) as SignalNode).y + 48 : 48}, ${dragConnection.x - 60} ${dragConnection.y}, ${dragConnection.x} ${dragConnection.y}`}
           />
         ) : null}
       </svg>
       {graph.nodes.map((node) => {
         const moduleType = getModuleDefinition(node.kind)?.type ?? node.type;
+        const position = nodePosition(node);
         return (
         <div
           key={node.id}
           className={`graph-node ${node.type} ${moduleType} ${selectedSet.has(node.id) ? "selected" : ""} ${errors.has(node.id) ? "error" : ""} ${disabledSet.has(node.id) ? "disabled" : ""} ${localOpenMenuId === node.id ? "menu-open" : ""}`}
-          style={{ transform: `translate(${node.position.x}px, ${node.position.y}px)` }}
-          onClick={(event) => onSelect(node.id, event.shiftKey)}
-          draggable
-          onDragStart={(event) => {
-            event.dataTransfer.setData("node-id", node.id);
-            const ids = selectedSet.has(node.id) ? selectedNodeIds : [node.id];
-            if (!selectedSet.has(node.id)) onSelect(node.id);
-            setNodeDragStart({ ids, nodeId: node.id, startPosition: node.position });
+          style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+          onClick={(event) => {
+            if (!suppressClickRef.current) onSelect(node.id, event.shiftKey);
           }}
-          onDragEnd={(event) => {
-            const canvas = event.currentTarget.closest(".node-canvas");
-            const rect = canvas?.getBoundingClientRect();
-            if (!rect || !nodeDragStart) return;
-            const nextPosition = {
-              x: Math.max(14, (event.clientX - rect.left - canvasView.x) / canvasView.zoom - 80),
-              y: Math.max(14, (event.clientY - rect.top - canvasView.y) / canvasView.zoom - 34)
-            };
-            onMoveNodes(nodeDragStart.ids, { x: nextPosition.x - nodeDragStart.startPosition.x, y: nextPosition.y - nodeDragStart.startPosition.y });
-            setNodeDragStart(undefined);
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect(node.id);
+            setGroupMenu(undefined);
+            setLocalOpenMenuId(node.id);
+          }}
+          onPointerDown={(event) => {
+            const target = event.target as HTMLElement;
+            if (target.closest("button, input, select, textarea, .node-menu")) return;
+            const isSelected = selectedSet.has(node.id);
+            const ids = event.shiftKey
+              ? isSelected
+                ? selectedNodeIds.filter((id) => id !== node.id)
+                : [...selectedNodeIds, node.id]
+              : isSelected
+                ? selectedNodeIds
+                : [node.id];
+            if (event.shiftKey || !isSelected || selectedNodeIds.length === 1) onSelect(node.id, event.shiftKey);
+            if (!ids.includes(node.id)) return;
+            beginPointerDrag(event, "nodes", ids, ids, node.id);
           }}
         >
           <button
@@ -1116,16 +1592,7 @@ const NodeCanvas = ({
                 }}
               >
                 <Eye size={13} />
-                Set display target
-              </button>
-              <button
-                onClick={() => {
-                  onSetDisplayNode(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Eye size={13} />
-                Inspect Output
+                {graph.displayNodeId === node.id ? "Clear display target" : "Set display target"}
               </button>
               <button
                 onClick={() => {
@@ -1194,6 +1661,40 @@ const NodeCanvas = ({
       </div>
       </div>
       {connectFromId || connectionError ? <div className={`canvas-hint ${connectionError ? "error" : ""}`}>{connectionError ?? "Drag to an input port or click another node input to connect. Esc cancels."}</div> : null}
+      {mode === "fullscreen" && !connectFromId && !connectionError ? (
+        <div className="canvas-shortcut-strip">
+          Drag to select · Ctrl+A all · Ctrl+G group · Ctrl+Shift+G ungroup · Ctrl+D duplicate · Delete · Esc
+        </div>
+      ) : null}
+      {groupMenu ? (
+        <div className="group-context-menu" style={{ left: groupMenu.x, top: groupMenu.y }} onClick={(event) => event.stopPropagation()}>
+          <button onClick={() => { onOpenGroupResults(groupMenu.groupId); setGroupMenu(undefined); }}>
+            <Activity size={13} />
+            Open Group Results
+          </button>
+          <button onClick={() => {
+            const group = graph.groups?.find((item) => item.id === groupMenu.groupId);
+            const name = window.prompt("Rename group", group?.name ?? "Group");
+            if (name?.trim()) onRenameGroup(groupMenu.groupId, name.trim());
+            setGroupMenu(undefined);
+          }}>
+            <PanelRight size={13} />
+            Rename
+          </button>
+          <button onClick={() => { onDuplicateGroup(groupMenu.groupId); setGroupMenu(undefined); }}>
+            <Copy size={13} />
+            Duplicate
+          </button>
+          <button onClick={() => { onUngroupGroup(groupMenu.groupId); setGroupMenu(undefined); }}>
+            <Ungroup size={13} />
+            Ungroup
+          </button>
+          <button className="danger" onClick={() => { onDeleteGroup(groupMenu.groupId); setGroupMenu(undefined); }}>
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -1614,14 +2115,30 @@ const BackendStatusChip = ({ status, runningCount }: { status: AnalysisBackendSt
 
 export const App = () => {
   const [graph, setGraph] = useState<SignalGraph>(sampleGraph);
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
   const csvInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(sampleGraph.selectedNodeId ? [sampleGraph.selectedNodeId] : []);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
   const [connectFromId, setConnectFromId] = useState<string>();
   const [dragConnection, setDragConnection] = useState<{ fromId: string; x: number; y: number }>();
   const [connectionError, setConnectionError] = useState<string>();
   const [canvasView, setCanvasView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [canvasFitVersion, setCanvasFitVersion] = useState(0);
+  const [layoutRunning, setLayoutRunning] = useState(false);
+  const [canvasMode, setCanvasMode] = useState<"embedded" | "fullscreen">("embedded");
+  const [canvasTool, setCanvasTool] = useState<"select" | "hand">("select");
+  const [canvasInspectorVisible, setCanvasInspectorVisible] = useState(false);
+  const [canvasResultsVisible, setCanvasResultsVisible] = useState(false);
+  const [canvasResultsMaximized, setCanvasResultsMaximized] = useState(false);
+  const [groupResultsId, setGroupResultsId] = useState<string>();
+  const [floatingInspectorPosition, setFloatingInspectorPosition] = useState<FloatingPanelPosition>({ x: 880, y: 72 });
+  const [floatingResultsPosition, setFloatingResultsPosition] = useState<FloatingPanelPosition>({ x: 40, y: 72 });
+  const [floatingGroupResultsPosition, setFloatingGroupResultsPosition] = useState<FloatingPanelPosition>({ x: 70, y: 58 });
+  const [groupResultsMaximized, setGroupResultsMaximized] = useState(false);
+  const [activeFloatingPanel, setActiveFloatingPanel] = useState<"inspector" | "results">("inspector");
   const [chartMode, setChartMode] = useState<"time" | "spectrum">("time");
   const [spectrumMode, setSpectrumMode] = useState<"linear" | "db">("linear");
   const [frequencyScale, setFrequencyScale] = useState<"linear" | "log">("linear");
@@ -1657,6 +2174,11 @@ export const App = () => {
     Object.entries(externalCommandErrors).forEach(([id, error]) => errors.set(id, error));
     return errors;
   }, [evaluation.errors, externalCommandErrors, externalCommandRunningIds, externalCommandSignals]);
+  const analysisOverlay = useMemo(() => {
+    const analyses = new Map(evaluation.analysis);
+    Object.entries(timeFrequencyResults).forEach(([id, analysis]) => analyses.set(id, analysis));
+    return analyses;
+  }, [evaluation.analysis, timeFrequencyResults]);
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
   const selectedSignal = selectedNodeId ? signalOverlay.get(selectedNodeId) : undefined;
   const selectedAnalysis = selectedNodeId ? timeFrequencyResults[selectedNodeId] ?? evaluation.analysis.get(selectedNodeId) : undefined;
@@ -1736,11 +2258,27 @@ export const App = () => {
     });
   };
 
-  const setSelection = (ids: string[]) => {
+  const setSelection = (
+    ids: string[],
+    options: { preserveGroups?: boolean; openInspector?: boolean } = {}
+  ) => {
     const existing = ids.filter((id) => graph.nodes.some((node) => node.id === id));
     setSelectedNodeIds(existing);
+    if (!options.preserveGroups) setSelectedGroupIds([]);
     setSelectedEdgeId(undefined);
     setGraph((current) => ({ ...current, selectedNodeId: existing[existing.length - 1] }));
+    const hasGroups = options.preserveGroups ? selectedGroupIds.length > 0 : false;
+    setCanvasInspectorVisible(canvasMode === "fullscreen" && Boolean(options.openInspector) && existing.length === 1 && !hasGroups);
+  };
+
+  const selectGroup = (id: string, append = false) => {
+    const existing = graph.groups?.some((group) => group.id === id);
+    if (!existing) return;
+    setSelectedGroupIds((ids) => (append ? (ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]) : [id]));
+    if (!append) setSelectedNodeIds([]);
+    setSelectedEdgeId(undefined);
+    setGraph((current) => ({ ...current, selectedNodeId: append ? selectedNodeIds[selectedNodeIds.length - 1] : undefined }));
+    setCanvasInspectorVisible(false);
   };
 
   const updateNode = (updatedNode: SignalNode) => {
@@ -1755,6 +2293,11 @@ export const App = () => {
     setTimeView((view) => clampView(view, duration));
     setTimeSelection((selection) => clampSelection(selection, { start: 0, end: duration }, duration));
   }, [duration]);
+
+  useEffect(() => {
+    document.body.classList.toggle("canvas-fullscreen-open", canvasMode === "fullscreen");
+    return () => document.body.classList.remove("canvas-fullscreen-open");
+  }, [canvasMode]);
 
   useEffect(() => {
     setTimeFrequencyResults({});
@@ -1916,18 +2459,47 @@ export const App = () => {
         return;
       }
       if (event.key === "Delete" || event.key === "Backspace") {
-        if (selectedEdgeId) {
-          commitGraph((current) => removeGraphEdge(current, selectedEdgeId));
-          setSelectedEdgeId(undefined);
-        } else {
-          deleteSelectedNodes();
-        }
+        deleteSelection();
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
-        duplicateSelectedNodes();
+        duplicateSelection();
+      }
+      if (canvasMode === "fullscreen" && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const nestedGroupIds = new Set((graph.groups ?? []).flatMap((group) => group.childGroupIds ?? []));
+        const rootGroupIds = (graph.groups ?? []).filter((group) => !nestedGroupIds.has(group.id)).map((group) => group.id);
+        const groupedNodeIds = new Set(getGraphGroupNodeIds(graph, rootGroupIds));
+        setSelectedGroupIds(rootGroupIds);
+        setSelectedNodeIds(graph.nodes.filter((node) => !groupedNodeIds.has(node.id)).map((node) => node.id));
+        setSelectedEdgeId(undefined);
+        setCanvasInspectorVisible(false);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "g") {
+        event.preventDefault();
+        if (event.shiftKey) ungroupSelectedGroups();
+        else groupSelectedNodes();
       }
       if (event.key === "Escape") {
+        if (connectFromId || dragConnection || selectedEdgeId || connectionError) {
+          setConnectFromId(undefined);
+          setDragConnection(undefined);
+          setSelectedEdgeId(undefined);
+          setConnectionError(undefined);
+          return;
+        }
+        if (selectedNodeIds.length > 0 || selectedGroupIds.length > 0) {
+          setSelection([]);
+          setSelectedGroupIds([]);
+          return;
+        }
+        if (canvasMode === "fullscreen") {
+          setCanvasMode("embedded");
+          setCanvasInspectorVisible(false);
+          setCanvasResultsVisible(false);
+          return;
+        }
         setConnectFromId(undefined);
         setDragConnection(undefined);
         setSelectedEdgeId(undefined);
@@ -1961,6 +2533,14 @@ export const App = () => {
     setConnectFromId(undefined);
   };
 
+  const deleteSelectedGroups = () => {
+    if (selectedGroupIds.length === 0) return;
+    commitGraph((current) => removeGraphGroups(current, selectedGroupIds));
+    setSelectedGroupIds([]);
+    setSelectedNodeIds([]);
+    setConnectFromId(undefined);
+  };
+
   const deleteSelectedEdge = () => {
     if (!selectedEdgeId) return;
     commitGraph((current) => removeGraphEdge(current, selectedEdgeId));
@@ -1970,6 +2550,7 @@ export const App = () => {
   const clearCanvas = () => {
     commitGraph((current) => clearGraphCanvas(current));
     setSelectedNodeIds([]);
+    setSelectedGroupIds([]);
     setSelectedEdgeId(undefined);
     setConnectFromId(undefined);
     setTimeFrequencyResults({});
@@ -1997,9 +2578,110 @@ export const App = () => {
     });
   };
 
-  const autoLayout = () => {
-    commitGraph((current) => autoLayoutGraph(current));
-    setCanvasView({ x: 0, y: 0, zoom: 1 });
+  const duplicateSelectedGroups = () => {
+    if (selectedGroupIds.length === 0) return;
+    commitGraph((current) => {
+      const previousGroupCount = current.groups?.length ?? 0;
+      const next = duplicateGraphGroups(current, selectedGroupIds);
+      const addedGroups = (next.groups ?? []).slice(previousGroupCount);
+      setSelectedGroupIds(
+        selectedGroupIds
+          .map((id) => addedGroups.find((group) => group.id.startsWith(`${id}-copy-`))?.id)
+          .filter((id): id is string => Boolean(id))
+      );
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(undefined);
+      return next;
+    });
+  };
+
+  const duplicateGroupById = (groupId: string) => {
+    commitGraph((current) => {
+      const previousGroupCount = current.groups?.length ?? 0;
+      const next = duplicateGraphGroups(current, [groupId]);
+      const copied = (next.groups ?? []).slice(previousGroupCount).find((group) => group.id.startsWith(`${groupId}-copy-`));
+      setSelectedGroupIds(copied ? [copied.id] : []);
+      setSelectedNodeIds([]);
+      return next;
+    });
+  };
+
+  const deleteGroupById = (groupId: string) => {
+    commitGraph((current) => removeGraphGroups(current, [groupId]));
+    setSelectedGroupIds([]);
+    if (groupResultsId === groupId) setGroupResultsId(undefined);
+  };
+
+  const ungroupGroupById = (groupId: string) => {
+    commitGraph((current) => ungroupGraphGroups(current, [groupId]));
+    setSelectedGroupIds([]);
+    if (groupResultsId === groupId) setGroupResultsId(undefined);
+  };
+
+  const renameGroupById = (groupId: string, name: string) => {
+    commitGraph((current) => ({
+      ...current,
+      groups: current.groups?.map((group) => (group.id === groupId ? { ...group, name } : group))
+    }));
+  };
+
+  const groupSelectedNodes = () => {
+    if (selectedNodeIds.length + selectedGroupIds.length < 2) return;
+    commitGraph((current) => {
+      const next = groupGraphNodes(current, selectedNodeIds, selectedGroupIds);
+      const group = next.groups?.[next.groups.length - 1];
+      setSelectedGroupIds(group ? [group.id] : []);
+      setSelectedNodeIds([]);
+      setCanvasInspectorVisible(false);
+      return next;
+    });
+  };
+
+  const ungroupSelectedGroups = () => {
+    if (selectedGroupIds.length === 0) return;
+    commitGraph((current) => ungroupGraphGroups(current, selectedGroupIds));
+    setSelectedGroupIds([]);
+  };
+
+  const duplicateSelection = () => {
+    if (selectedGroupIds.length > 0) duplicateSelectedGroups();
+    else duplicateSelectedNodes();
+  };
+
+  const deleteSelection = () => {
+    if (selectedEdgeId) deleteSelectedEdge();
+    else if (selectedGroupIds.length > 0) deleteSelectedGroups();
+    else deleteSelectedNodes();
+  };
+
+  const autoLayout = async () => {
+    if (layoutRunning || graph.nodes.length === 0) return;
+    const sourceGraph = graph;
+    const layoutSignature = (candidate: SignalGraph) =>
+      JSON.stringify({
+        nodes: candidate.nodes.map((node) => [node.id, node.position.x, node.position.y]),
+        edges: candidate.edges.map((edge) => [edge.id, edge.from, edge.to]),
+        groups: (candidate.groups ?? []).map((group) => [group.id, group.nodeIds, group.childGroupIds ?? []])
+      });
+    const sourceSignature = layoutSignature(sourceGraph);
+    setLayoutRunning(true);
+    setConnectionError(undefined);
+    try {
+      const layout = await layoutSignalGraph(sourceGraph);
+      if (layoutSignature(graphRef.current) !== sourceSignature) return;
+      commitGraph((current) => ({
+        ...current,
+        nodes: current.nodes.map((node) => ({
+          ...node,
+          position: layout.positions[node.id] ?? node.position
+        }))
+      }));
+      setCanvasFitVersion((version) => version + 1);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Auto layout failed.");
+    } finally {
+      setLayoutRunning(false);
+    }
   };
 
   const connectNodes = (from: string, to: string) => {
@@ -2015,6 +2697,11 @@ export const App = () => {
   const moveNodesByDelta = (nodeIds: string[], delta: { x: number; y: number }) => {
     if (nodeIds.length === 0 || (delta.x === 0 && delta.y === 0)) return;
     commitGraph((current) => moveGraphNodes(current, nodeIds, delta));
+  };
+
+  const moveGroupsByDelta = (groupIds: string[], delta: { x: number; y: number }) => {
+    if (groupIds.length === 0 || (delta.x === 0 && delta.y === 0)) return;
+    commitGraph((current) => moveGraphGroups(current, groupIds, delta));
   };
 
   const toggleNodeDisabled = (nodeId: string) => {
@@ -2033,6 +2720,7 @@ export const App = () => {
     setUndoStack((stack) => stack.slice(0, -1));
     setGraph(previous);
     setSelectedNodeIds(previous.selectedNodeId ? [previous.selectedNodeId] : []);
+    setSelectedGroupIds([]);
     setSelectedEdgeId(undefined);
   };
 
@@ -2043,6 +2731,7 @@ export const App = () => {
     setRedoStack((stack) => stack.slice(1));
     setGraph(next);
     setSelectedNodeIds(next.selectedNodeId ? [next.selectedNodeId] : []);
+    setSelectedGroupIds([]);
     setSelectedEdgeId(undefined);
   };
 
@@ -2105,6 +2794,7 @@ export const App = () => {
       setUndoStack([]);
       setRedoStack([]);
       setSelectedNodeIds(loaded.selectedNodeId ? [loaded.selectedNodeId] : []);
+      setSelectedGroupIds([]);
       setSelectedEdgeId(undefined);
       setConnectFromId(undefined);
       setCsvImportMessage(`Loaded ${file.name} with schema v${loaded.schemaVersion ?? 2}`);
@@ -2190,17 +2880,24 @@ export const App = () => {
               <BackendStatusChip status={analysisBackendStatus} runningCount={timeFrequencyRunningIds.length + externalCommandRunningIds.length} />
               <div className="status-chip">
                 <Sparkles size={14} />
-                {errorOverlay.size === 0 ? `DAG valid / ${selectedNodeIds.length} selected` : `${errorOverlay.size} error(s) / ${selectedNodeIds.length} selected`}
+                {errorOverlay.size === 0
+                  ? `DAG valid / ${selectedNodeIds.length + selectedGroupIds.length} selected`
+                  : `${errorOverlay.size} error(s) / ${selectedNodeIds.length + selectedGroupIds.length} selected`}
               </div>
             </div>
           </div>
           <NodeCanvas
             graph={graph}
+            mode={canvasMode}
+            tool={canvasTool}
             selectedNodeIds={selectedNodeIds}
+            selectedGroupIds={selectedGroupIds}
             errors={errorOverlay}
             signals={signalOverlay}
             previewView={visibleSelection}
             canvasView={canvasView}
+            fitVersion={canvasFitVersion}
+            layoutRunning={layoutRunning}
             connectFromId={connectFromId}
             dragConnection={dragConnection}
             selectedEdgeId={selectedEdgeId}
@@ -2208,21 +2905,53 @@ export const App = () => {
             onSelect={(id, append) => {
               if (append) {
                 const next = selectedNodeIds.includes(id) ? selectedNodeIds.filter((item) => item !== id) : [...selectedNodeIds, id];
-                setSelection(next);
+                setSelection(next, { preserveGroups: true });
               } else {
                 setSelection([id]);
               }
             }}
-            onSelectMany={setSelection}
+            onInspectNode={(id, anchor) => {
+              if (
+                canvasMode !== "fullscreen" ||
+                selectedNodeIds.length > 1 ||
+                selectedNodeIds[selectedNodeIds.length - 1] !== id ||
+                selectedGroupIds.length > 0
+              ) return;
+              const panelWidth = 350;
+              const panelHeight = Math.min(760, window.innerHeight - 96);
+              setFloatingInspectorPosition({
+                x: anchor.x + panelWidth + 8 <= window.innerWidth ? anchor.x : Math.max(8, anchor.x - panelWidth - 200),
+                y: Math.min(Math.max(8, anchor.y), Math.max(8, window.innerHeight - panelHeight - 8))
+              });
+              setActiveFloatingPanel("inspector");
+              setCanvasInspectorVisible(true);
+            }}
+            onSelectMany={(ids, append) => setSelection(ids, { preserveGroups: append })}
+            onSelectGroup={selectGroup}
             onSelectEdge={(id) => {
               setSelectedEdgeId(id);
               setSelectedNodeIds([]);
+              setSelectedGroupIds([]);
             }}
             onAdd={addNode}
             onMoveNodes={moveNodesByDelta}
+            onMoveGroups={moveGroupsByDelta}
+            onDuplicateGroup={duplicateGroupById}
+            onDeleteGroup={deleteGroupById}
+            onUngroupGroup={ungroupGroupById}
+            onRenameGroup={renameGroupById}
+            onOpenGroupResults={setGroupResultsId}
+            onGroup={groupSelectedNodes}
+            onUngroup={ungroupSelectedGroups}
+            onDuplicateSelection={duplicateSelection}
+            onDeleteSelection={deleteSelection}
             onDuplicateNode={duplicateNodeById}
             onDeleteNode={deleteNodeById}
-            onSetDisplayNode={(id) => commitGraph((current) => setDisplayNode(current, id))}
+            onSetDisplayNode={(id) =>
+              commitGraph((current) =>
+                current.displayNodeId === id ? { ...current, displayNodeId: undefined } : setDisplayNode(current, id)
+              )
+            }
             onRenameNode={(id, name) => {
               const node = graph.nodes.find((item) => item.id === id);
               if (node) updateNode({ ...node, name });
@@ -2245,6 +2974,22 @@ export const App = () => {
             onUndo={undoGraph}
             onRedo={redoGraph}
             onClear={clearCanvas}
+            onTool={setCanvasTool}
+            onToggleInspector={() => setCanvasInspectorVisible((visible) => !visible)}
+            onToggleResults={() => setCanvasResultsVisible((visible) => !visible)}
+            inspectorVisible={canvasInspectorVisible}
+            resultsVisible={canvasResultsVisible}
+            onToggleFullscreen={() => {
+              setCanvasMode((mode) => {
+                const next = mode === "fullscreen" ? "embedded" : "fullscreen";
+                if (next === "fullscreen") {
+                  setCanvasTool("select");
+                  setCanvasInspectorVisible(false);
+                  setCanvasResultsVisible(false);
+                }
+                return next;
+              });
+            }}
             canUndo={undoStack.length > 0}
             canRedo={redoStack.length > 0}
             canClear={graph.nodes.length > 0}
@@ -2391,6 +3136,121 @@ export const App = () => {
           onExportNodeAnalysis={exportSelectedNodeAnalysis}
         />
       </div>
+      {canvasMode === "fullscreen" && canvasInspectorVisible ? (
+        <FloatingPanel
+          title={selectedNode ? `Inspector · ${selectedNode.name}` : "Inspector"}
+          position={floatingInspectorPosition}
+          className="floating-inspector"
+          zIndex={activeFloatingPanel === "inspector" ? 1110 : 1100}
+          onMove={setFloatingInspectorPosition}
+          onClose={() => setCanvasInspectorVisible(false)}
+          onFocus={() => setActiveFloatingPanel("inspector")}
+        >
+          <Inspector
+            node={selectedNode}
+            graph={graph}
+            signals={signalOverlay}
+            signal={selectedSignal}
+            error={selectedNodeId ? errorOverlay.get(selectedNodeId) : undefined}
+            sampleRate={sampleRate}
+            totalDuration={duration}
+            onChangeNode={updateNode}
+            analysis={selectedAnalysis}
+            inputNames={selectedNodeId ? graph.edges.filter((edge) => edge.to === selectedNodeId).map((edge) => graph.nodes.find((node) => node.id === edge.from)?.name ?? edge.from) : []}
+            onExportNodeSignal={exportSelectedNodeSignal}
+            onExportNodeAnalysis={exportSelectedNodeAnalysis}
+          />
+        </FloatingPanel>
+      ) : null}
+      {canvasMode === "fullscreen" && canvasResultsVisible ? (
+        <FloatingPanel
+          title={displayNode ? `Results · ${displayNode.name}` : "Results"}
+          position={floatingResultsPosition}
+          className="floating-results"
+          zIndex={activeFloatingPanel === "results" ? 1110 : 1100}
+          onMove={setFloatingResultsPosition}
+          onClose={() => setCanvasResultsVisible(false)}
+          onFocus={() => setActiveFloatingPanel("results")}
+          maximized={canvasResultsMaximized}
+          onToggleMaximize={() => setCanvasResultsMaximized((maximized) => !maximized)}
+        >
+          <div className="floating-result-toolbar">
+            {displaySignalPlot?.kind === "line" ? (
+              <button className={activeChart === "series" ? "active" : ""} onClick={() => setChartMode("time")}>Waveform</button>
+            ) : null}
+            {spectrumPlot ? (
+              <button className={activeChart === "spectrum" ? "active" : ""} onClick={() => setChartMode("spectrum")}>Spectrum</button>
+            ) : null}
+            <button title="Auto scale Y axis" onClick={() => setActivePlotView("y", undefined)}>
+              <SlidersHorizontal size={14} />
+              Auto Y
+            </button>
+            {activeChart === "series" && displaySignalPlot?.kind === "line" ? (
+              <div className="group-results-legend compact">
+                {[displaySignalPlot, ...compatibleComparePlots].map((plot, index) => (
+                  <span key={plot.id}>
+                    <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
+                    {plot.title}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="floating-result-plot">
+            {activeChart === "analysis" && displayAnalysis ? (
+              <AnalysisPanel analysis={displayAnalysis} />
+            ) : activeChart === "series" && displaySignalPlot?.kind === "line" ? (
+              <ScientificSeriesPlot
+                model={displaySignalPlot}
+                comparisons={compatibleComparePlots}
+                xRange={displaySignalPlot.xAxis.linkToMaster ? { min: visibleSelection.start, max: visibleSelection.end } : activePlotView.x}
+                yRange={activePlotView.y}
+                cursorX={activeCursorX}
+                maxPreviewPoints={plotPreviewPoints}
+                onXRange={(range) => setActivePlotView("x", range)}
+                onYRange={(range) => setActivePlotView("y", range)}
+                onCursorX={(value) => {
+                  if (displaySignalPlot.xAxis.linkToMaster) setCurrentTime(value);
+                  else setPlotCursorXs((current) => ({ ...current, [plotKey]: value }));
+                }}
+              />
+            ) : activeChart === "spectrum" && spectrumPlot ? (
+              <ScientificSpectrumPlot
+                model={spectrumPlot}
+                magnitudeMode={spectrumMode}
+                frequencyScale={frequencyScale}
+                xRange={activePlotView.x}
+                yRange={activePlotView.y}
+                onXRange={(range) => setActivePlotView("x", range)}
+                onYRange={(range) => setActivePlotView("y", range)}
+              />
+            ) : (
+              <div className="chart-empty">No compatible result view</div>
+            )}
+          </div>
+        </FloatingPanel>
+      ) : null}
+      {groupResultsId && graph.groups?.some((group) => group.id === groupResultsId) ? (
+        <FloatingPanel
+          title={`Group Results · ${graph.groups.find((group) => group.id === groupResultsId)?.name ?? "Group"}`}
+          position={floatingGroupResultsPosition}
+          className="floating-results group-results-window"
+          zIndex={1120}
+          onMove={setFloatingGroupResultsPosition}
+          onClose={() => setGroupResultsId(undefined)}
+          onFocus={() => setActiveFloatingPanel("results")}
+          maximized={groupResultsMaximized}
+          onToggleMaximize={() => setGroupResultsMaximized((maximized) => !maximized)}
+        >
+          <GroupResultsPanel
+            group={graph.groups.find((group) => group.id === groupResultsId) as GraphGroup}
+            nodeIds={getGraphGroupNodeIds(graph, [groupResultsId])}
+            nodes={graph.nodes}
+            signals={signalOverlay}
+            analyses={analysisOverlay}
+          />
+        </FloatingPanel>
+      ) : null}
     </main>
   );
 };

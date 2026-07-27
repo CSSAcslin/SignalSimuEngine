@@ -21,7 +21,6 @@ The top bar contains project-level actions.
 - **Samples / Duration**: global sample count and time duration. Changing one updates the global project scale.
 - **Import CSV**: imports a CSV file as a new source node.
 - **Project**: loads a saved SignalForge project JSON.
-- **Undo / Redo**: restores graph-editing history.
 - **Save**: exports the full project JSON, including nodes, parameters, edges, display target, disabled nodes, and external command settings.
 - **Reproduce.py**: exports `signalforge-reproduce.py`, a Python script that reconstructs the current node graph as far as possible.
 
@@ -42,6 +41,7 @@ The search box filters modules by label, description, kind, and category. A floa
 - **Gaussian Pulse**: Gaussian pulse with center, sigma, and amplitude.
 - **Chirp**: linear frequency sweep.
 - **White Noise**: seeded uniform white noise.
+- **Photon Counts**: coherent Poisson or thermal chaotic photon-count simulation with detector efficiency, dark counts, coherence time, and optional modulation.
 - **Constant**: constant baseline.
 - **Import Array**: inline numeric values.
 
@@ -65,6 +65,7 @@ The search box filters modules by label, description, kind, and category. A floa
 - **SNR**: signal-to-noise ratio against a noise floor.
 - **Dominant Frequency**: strongest non-DC frequency.
 - **Bandwidth**: occupied bandwidth above a threshold.
+- **G2 Correlation**: normalized or raw second-order auto/cross-correlation, either at one lag or as a curve over delay.
 - **STFT / CWT**: time-frequency analysis through the local Python/SciPy backend.
 
 ### Custom
@@ -83,9 +84,25 @@ The canvas is the main graph editor.
 - Drag selected nodes to move them together.
 - Connect an output port to an input port to create a directed edge.
 - Invalid connections are rejected: self-connections, cycles, duplicate edges, or too many inputs.
-- Use the node menu for local actions such as setting the display target, copying, deleting, renaming, disabling, or inspecting output.
+- Open the node menu with either the three-dot button or right-click. Both provide the same local actions: set/clear display target, rename, enable/disable, duplicate, delete, and start connection.
+- Use the canvas toolbar for zoom, fit view, automatic layout, undo/redo, grouping, duplication, deletion, and clearing the canvas.
+- **Auto Layout** creates a compact horizontal signal-flow arrangement, keeps explicit groups together, prevents node overlap, and finishes by fitting the graph into view.
 
 The graph is constrained to a directed acyclic graph. This keeps evaluation order deterministic and reproducible.
+
+### Advanced Canvas
+
+Use **Open Advanced Canvas** in the canvas toolbar to expand the graph editor to the full window. The same node graph and editing state are reused; entering this mode does not create a second canvas.
+
+- Drag on empty space to box-select nodes.
+- Drag any selected node to move the whole node selection.
+- Group selected nodes or groups with the toolbar or `Ctrl/Cmd + G`.
+- Click a group background or header to select and drag the complete group.
+- Groups can be nested. `Ctrl/Cmd + Shift + G` removes the selected group level while preserving nested child groups.
+- Right-click a group to open group results, rename, duplicate, ungroup, or delete it.
+- A simple node click opens the floating Inspector beside that node.
+- Dragging a node does not open the Inspector. If it is already open, starting a drag hides it.
+- Inspector, Results, and Group Results are movable floating panels. Results panels can also be maximized.
 
 ### Canvas Shortcuts
 
@@ -93,6 +110,9 @@ The graph is constrained to a directed acyclic graph. This keeps evaluation orde
 - `Ctrl/Cmd + Shift + Z` or `Ctrl/Cmd + Y`: redo.
 - `Delete` / `Backspace`: delete selected nodes or edge.
 - `Ctrl/Cmd + D`: duplicate selected nodes.
+- `Ctrl/Cmd + A`: select all nodes in Advanced Canvas.
+- `Ctrl/Cmd + G`: group the current selection.
+- `Ctrl/Cmd + Shift + G`: ungroup the selected group level.
 - `Esc`: cancel connection or temporary UI state.
 
 When the cursor is inside an input, textarea, select box, or editable text area, these canvas shortcuts are isolated so normal typing and deletion work safely.
@@ -139,7 +159,7 @@ Analysis modules can return scalars, summaries, distributions, spectra, or time-
 
 ## Inspector
 
-The right panel edits the selected node.
+The right panel edits the selected node in the standard workspace. In Advanced Canvas, a simple node click opens the same Inspector as a movable panel beside the node; dragging only moves the node and does not open it.
 
 ### Parameters
 
@@ -395,4 +415,3 @@ For trustworthy experiments:
 - Prefer relative or documented external paths when sharing projects.
 - Export node-level CSV/NPY for the actual module you want to analyze.
 - Use `Reproduce.py` as a companion script, not as a replacement for the saved project JSON.
-

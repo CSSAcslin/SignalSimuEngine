@@ -81,6 +81,24 @@ export const migrateProjectGraph = (value: unknown): SignalGraph => {
         }))
         .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
     : [];
+  const rawGroups = Array.isArray(value.groups) ? value.groups.filter(isRecord) : [];
+  const groupIds = new Set(rawGroups.map((group, index) => (typeof group.id === "string" ? group.id : `group-${index + 1}`)));
+  const groups = rawGroups.length > 0
+    ? rawGroups
+        .filter(isRecord)
+        .map((group, index) => ({
+          id: typeof group.id === "string" ? group.id : `group-${index + 1}`,
+          name: typeof group.name === "string" ? group.name : `Group ${index + 1}`,
+          nodeIds: Array.isArray(group.nodeIds)
+            ? group.nodeIds.filter((id): id is string => typeof id === "string" && nodeIds.has(id))
+            : [],
+          childGroupIds: Array.isArray(group.childGroupIds)
+            ? group.childGroupIds.filter((id): id is string => typeof id === "string" && groupIds.has(id))
+            : undefined,
+          color: typeof group.color === "string" ? group.color : undefined
+        }))
+        .filter((group) => group.nodeIds.length + (group.childGroupIds?.length ?? 0) > 1)
+    : undefined;
   if (nodes.length === 0) throw new Error("Project does not contain any valid nodes.");
 
   const selectedNodeId = typeof value.selectedNodeId === "string" && nodeIds.has(value.selectedNodeId) ? value.selectedNodeId : nodes[0].id;
@@ -94,6 +112,7 @@ export const migrateProjectGraph = (value: unknown): SignalGraph => {
     disabledNodeIds,
     nodes,
     edges,
+    groups,
     selectedNodeId,
     displayNodeId
   };

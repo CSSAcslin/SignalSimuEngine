@@ -6,6 +6,8 @@ export * from "./exporters";
 export * from "./externalCommandBackend";
 export * from "./graphEditing";
 export * from "./importers";
+export * from "./layoutClient";
+export type { LayoutPoint, SignalGraphLayout } from "./layoutEngine";
 export * from "./modules";
 export * from "./plotModel";
 export * from "./project";

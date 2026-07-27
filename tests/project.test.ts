@@ -87,6 +87,46 @@ describe("project JSON migration", () => {
     });
   });
 
+  it("preserves canvas groups across project save and load", () => {
+    const graph = parseProjectJson(
+      JSON.stringify({
+        nodes: [
+          { id: "a", type: "source", kind: "constant", name: "A", position: { x: 0, y: 0 }, sampleRate: 1, length: 1, params: { value: 1 } },
+          { id: "b", type: "operation", kind: "scale", name: "B", position: { x: 120, y: 0 }, params: { gain: 2 } }
+        ],
+        edges: [{ id: "a-b", from: "a", to: "b" }],
+        groups: [{ id: "group-1", name: "Calibration", nodeIds: ["a", "b"] }]
+      })
+    );
+
+    expect(parseProjectJson(serializeProjectGraph(graph)).groups).toEqual([
+      { id: "group-1", name: "Calibration", nodeIds: ["a", "b"] }
+    ]);
+  });
+
+  it("preserves nested canvas groups across project save and load", () => {
+    const restored = parseProjectJson(
+      serializeProjectGraph(
+        parseProjectJson(
+          JSON.stringify({
+            nodes: [
+              { id: "a", type: "source", kind: "constant", name: "A", position: { x: 0, y: 0 }, sampleRate: 1, length: 1, params: { value: 1 } },
+              { id: "b", type: "source", kind: "constant", name: "B", position: { x: 100, y: 0 }, sampleRate: 1, length: 1, params: { value: 2 } },
+              { id: "c", type: "operation", kind: "add", name: "C", position: { x: 200, y: 0 }, params: {} }
+            ],
+            edges: [],
+            groups: [
+              { id: "child", name: "Child", nodeIds: ["a", "b"] },
+              { id: "parent", name: "Parent", nodeIds: ["c"], childGroupIds: ["child"] }
+            ]
+          })
+        )
+      )
+    );
+
+    expect(restored.groups?.find((group) => group.id === "parent")?.childGroupIds).toEqual(["child"]);
+  });
+
   it("migrates the removed G2 time-curve mode to a delay scan", () => {
     const graph = migrateProjectGraph({
       nodes: [
