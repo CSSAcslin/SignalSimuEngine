@@ -618,10 +618,12 @@ const GroupResultsPanel = ({
   const [xRange, setXRange] = useState<ValueRange>();
   const [yRange, setYRange] = useState<ValueRange>();
   const [cursorX, setCursorX] = useState<number>();
+  const [cursorSeriesId, setCursorSeriesId] = useState<string>();
   useEffect(() => {
     if (!views.some((view) => view.key === activeKey)) setActiveKey(views[0]?.key ?? "empty");
     setXRange(undefined);
     setYRange(undefined);
+    setCursorSeriesId(undefined);
   }, [activeKey, group.id, views.map((view) => view.key).join("|")]);
 
   const activeLine = lineViews.find((view) => view.key === activeKey);
@@ -641,10 +643,15 @@ const GroupResultsPanel = ({
           <div className="group-series-view">
             <div className="group-results-legend">
               {activeLine.plots.map((plot, index) => (
-                <span key={plot.id}>
+                <button
+                  key={plot.id}
+                  className={(cursorSeriesId ?? activeLine.plots[0].id) === plot.id ? "active" : ""}
+                  onClick={() => setCursorSeriesId(plot.id)}
+                  title={`Use ${plot.title} for cursor values`}
+                >
                   <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
                   {plot.title}
-                </span>
+                </button>
               ))}
             </div>
             <ScientificSeriesPlot
@@ -653,6 +660,7 @@ const GroupResultsPanel = ({
               xRange={xRange}
               yRange={yRange}
               cursorX={cursorX ?? activeLine.plots[0].x[0]}
+              cursorSeriesId={cursorSeriesId ?? activeLine.plots[0].id}
               maxPreviewPoints={1200}
               onXRange={setXRange}
               onYRange={setYRange}
@@ -663,7 +671,8 @@ const GroupResultsPanel = ({
           <div className="group-metric-grid">
             {metricEntries.map(({ node, analysis }) => (
               <section key={node.id}>
-                <strong>{node.name}</strong>
+                <strong>Source: {node.name}</strong>
+                <small>{analysis.name}</small>
                 {analysis.type === "scalar" ? (
                   <div className="analysis-metric-card compact">
                     <span>{analysis.label}</span>
@@ -942,7 +951,6 @@ const NodeCanvas = ({
   connectFromId,
   dragConnection,
   selectedEdgeId,
-  openNodeMenuId,
   connectionError,
   onSelect,
   onInspectNode,
@@ -998,7 +1006,6 @@ const NodeCanvas = ({
   connectFromId?: string;
   dragConnection?: { fromId: string; x: number; y: number };
   selectedEdgeId?: string;
-  openNodeMenuId?: string;
   connectionError?: string;
   onSelect: (id: string, append?: boolean) => void;
   onInspectNode: (id: string, anchor: LayoutPoint) => void;
@@ -1062,7 +1069,7 @@ const NodeCanvas = ({
   const dragFrameRef = useRef<number | undefined>(undefined);
   const suppressClickRef = useRef(false);
   const [groupMenu, setGroupMenu] = useState<{ groupId: string; x: number; y: number }>();
-  const [localOpenMenuId, setLocalOpenMenuId] = useState<string | undefined>(openNodeMenuId);
+  const [nodeMenu, setNodeMenu] = useState<{ nodeId: string; x: number; y: number }>();
   const selectedSet = new Set(selectedNodeIds);
   const selectedGroupSet = new Set(selectedGroupIds);
   const disabledSet = new Set(graph.disabledNodeIds ?? []);
@@ -1312,6 +1319,7 @@ const NodeCanvas = ({
           (event.clientY - rect.top - canvasView.y) / canvasView.zoom
         );
         if (!hitGroup) return;
+        setNodeMenu(undefined);
         const isSelected = selectedGroupSet.has(hitGroup.group.id);
         const ids = event.shiftKey
           ? isSelected
@@ -1338,6 +1346,7 @@ const NodeCanvas = ({
         const target = event.target as HTMLElement;
         if (event.button !== 0 || target.closest(".graph-node, .graph-group-header, .node-port, .canvas-tools, path")) return;
         setGroupMenu(undefined);
+        setNodeMenu(undefined);
         const rect = event.currentTarget.getBoundingClientRect();
         const worldX = (event.clientX - rect.left - canvasView.x) / canvasView.zoom;
         const worldY = (event.clientY - rect.top - canvasView.y) / canvasView.zoom;
@@ -1411,6 +1420,7 @@ const NodeCanvas = ({
         );
         if (!hitGroup) return;
         event.preventDefault();
+        setNodeMenu(undefined);
         onSelectGroup(hitGroup.group.id);
         setGroupMenu({ groupId: hitGroup.group.id, x: event.clientX, y: event.clientY });
       }}
@@ -1454,6 +1464,7 @@ const NodeCanvas = ({
               onSelectGroup(group.id, event.shiftKey);
             }}
             onPointerDown={(event) => {
+              setNodeMenu(undefined);
               const isSelected = selectedGroupSet.has(group.id);
               const ids = event.shiftKey
                 ? isSelected
@@ -1492,6 +1503,7 @@ const NodeCanvas = ({
               d={`M ${startX} ${startY} C ${startX + mid} ${startY}, ${endX - mid} ${endY}, ${endX} ${endY}`}
               onClick={(event) => {
                 event.stopPropagation();
+                setNodeMenu(undefined);
                 onSelectEdge(edge.id);
               }}
             />
@@ -1510,7 +1522,7 @@ const NodeCanvas = ({
         return (
         <div
           key={node.id}
-          className={`graph-node ${node.type} ${moduleType} ${selectedSet.has(node.id) ? "selected" : ""} ${errors.has(node.id) ? "error" : ""} ${disabledSet.has(node.id) ? "disabled" : ""} ${localOpenMenuId === node.id ? "menu-open" : ""}`}
+          className={`graph-node ${node.type} ${moduleType} ${selectedSet.has(node.id) ? "selected" : ""} ${errors.has(node.id) ? "error" : ""} ${disabledSet.has(node.id) ? "disabled" : ""} ${nodeMenu?.nodeId === node.id ? "menu-open" : ""}`}
           style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
           onClick={(event) => {
             if (!suppressClickRef.current) onSelect(node.id, event.shiftKey);
@@ -1520,11 +1532,12 @@ const NodeCanvas = ({
             event.stopPropagation();
             onSelect(node.id);
             setGroupMenu(undefined);
-            setLocalOpenMenuId(node.id);
+            setNodeMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
           }}
           onPointerDown={(event) => {
             const target = event.target as HTMLElement;
-            if (target.closest("button, input, select, textarea, .node-menu")) return;
+            if (target.closest("button, input, select, textarea, .node-context-menu")) return;
+            setNodeMenu(undefined);
             const isSelected = selectedSet.has(node.id);
             const ids = event.shiftKey
               ? isSelected
@@ -1577,71 +1590,22 @@ const NodeCanvas = ({
             onClick={(event) => {
               event.stopPropagation();
               onSelect(node.id);
-              setLocalOpenMenuId(localOpenMenuId === node.id ? undefined : node.id);
+              setGroupMenu(undefined);
+              const rect = event.currentTarget.getBoundingClientRect();
+              setNodeMenu((current) =>
+                current?.nodeId === node.id
+                  ? undefined
+                  : {
+                      nodeId: node.id,
+                      x: Math.min(window.innerWidth - 198, rect.right + 6),
+                      y: Math.min(window.innerHeight - 220, rect.top)
+                    }
+              );
             }}
             title="Node actions"
           >
             <MoreVertical size={14} />
           </button>
-          {localOpenMenuId === node.id ? (
-            <div className="node-menu" onClick={(event) => event.stopPropagation()}>
-              <button
-                onClick={() => {
-                  onSetDisplayNode(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Eye size={13} />
-                {graph.displayNodeId === node.id ? "Clear display target" : "Set display target"}
-              </button>
-              <button
-                onClick={() => {
-                  const nextName = window.prompt("Rename node", node.name);
-                  if (nextName?.trim()) onRenameNode(node.id, nextName.trim());
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <PanelRight size={13} />
-                Rename
-              </button>
-              <button
-                onClick={() => {
-                  onToggleDisabled(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Minus size={13} />
-                {disabledSet.has(node.id) ? "Enable" : "Disable"}
-              </button>
-              <button
-                onClick={() => {
-                  onDuplicateNode(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Copy size={13} />
-                Duplicate
-              </button>
-              <button
-                onClick={() => {
-                  onDeleteNode(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Trash2 size={13} />
-                Delete
-              </button>
-              <button
-                onClick={() => {
-                  onStartConnect(node.id);
-                  setLocalOpenMenuId(undefined);
-                }}
-              >
-                <Cable size={13} />
-                Start connection
-              </button>
-            </div>
-          ) : null}
           {graph.displayNodeId === node.id ? <span className="display-badge">DISPLAY</span> : null}
           {disabledSet.has(node.id) ? <span className="disabled-badge">DISABLED</span> : null}
         </div>
@@ -1695,6 +1659,42 @@ const NodeCanvas = ({
           </button>
         </div>
       ) : null}
+      {nodeMenu ? (() => {
+        const node = nodeMap.get(nodeMenu.nodeId);
+        if (!node) return null;
+        return (
+          <div className="group-context-menu node-context-menu" style={{ left: nodeMenu.x, top: nodeMenu.y }} onClick={(event) => event.stopPropagation()}>
+            <button onClick={() => { onSetDisplayNode(node.id); setNodeMenu(undefined); }}>
+              <Eye size={13} />
+              {graph.displayNodeId === node.id ? "Clear display target" : "Set display target"}
+            </button>
+            <button onClick={() => {
+              const nextName = window.prompt("Rename node", node.name);
+              if (nextName?.trim()) onRenameNode(node.id, nextName.trim());
+              setNodeMenu(undefined);
+            }}>
+              <PanelRight size={13} />
+              Rename
+            </button>
+            <button onClick={() => { onToggleDisabled(node.id); setNodeMenu(undefined); }}>
+              <Minus size={13} />
+              {disabledSet.has(node.id) ? "Enable" : "Disable"}
+            </button>
+            <button onClick={() => { onDuplicateNode(node.id); setNodeMenu(undefined); }}>
+              <Copy size={13} />
+              Duplicate
+            </button>
+            <button className="danger" onClick={() => { onDeleteNode(node.id); setNodeMenu(undefined); }}>
+              <Trash2 size={13} />
+              Delete
+            </button>
+            <button onClick={() => { onStartConnect(node.id); setNodeMenu(undefined); }}>
+              <Cable size={13} />
+              Start connection
+            </button>
+          </div>
+        );
+      })() : null}
     </div>
   );
 };
@@ -2148,6 +2148,7 @@ export const App = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [plotViews, setPlotViews] = useState<Record<string, { x?: ValueRange; y?: ValueRange }>>({});
   const [plotCursorXs, setPlotCursorXs] = useState<Record<string, number>>({});
+  const [plotCursorSeriesIds, setPlotCursorSeriesIds] = useState<Record<string, string>>({});
   const [undoStack, setUndoStack] = useState<SignalGraph[]>([]);
   const [redoStack, setRedoStack] = useState<SignalGraph[]>([]);
   const [csvImportMessage, setCsvImportMessage] = useState<string>();
@@ -2230,7 +2231,11 @@ export const App = () => {
   const activeCursorX = displaySignalPlot?.kind === "line" && displaySignalPlot.xAxis.linkToMaster
     ? currentTime
     : plotCursorXs[plotKey] ?? (displaySignalPlot?.kind === "line" ? displaySignalPlot.x[0] : undefined);
-  const cursorReadout = readSignalAtTime(displaySignal, activeCursorX ?? currentTime);
+  const activeCursorSeriesId = plotCursorSeriesIds[plotKey] ?? displaySignalPlot?.id;
+  const activeCursorPlot = displaySignalPlot?.kind === "line"
+    ? [displaySignalPlot, ...compatibleComparePlots].find((plot) => plot.id === activeCursorSeriesId) ?? displaySignalPlot
+    : undefined;
+  const cursorReadout = readSignalAtTime(activeCursorPlot ? signalOverlay.get(activeCursorPlot.id) : displaySignal, activeCursorX ?? currentTime);
   const sampleRate = graphSampleRate(graph);
   const samples = graphSamples(graph);
   const duration = Math.max(
@@ -3025,17 +3030,22 @@ export const App = () => {
                       </span>
                       <div className="plot-legend" aria-label="Visible series">
                         {[displaySignalPlot, ...compatibleComparePlots].map((plot, index) => (
-                          <span key={plot.id}>
+                          <button
+                            key={plot.id}
+                            className={activeCursorPlot?.id === plot.id ? "active" : ""}
+                            onClick={() => setPlotCursorSeriesIds((current) => ({ ...current, [plotKey]: plot.id }))}
+                            title={`Use ${plot.title} for cursor values`}
+                          >
                             <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
                             {plot.title}
-                          </span>
+                          </button>
                         ))}
                       </div>
                       <code className="plot-size">{displaySignalPlot.x.length.toLocaleString()} points</code>
                       <div className="cursor-readout">
                         <span>Crosshair</span>
                         <strong>{cursorReadout ? `${formatValue(cursorReadout.time)} ${displaySignalPlot.xAxis.unit}` : "-"}</strong>
-                        <code>{formatValue(cursorReadout?.value)} {displaySignalPlot.yUnit}</code>
+                        <code>{formatValue(cursorReadout?.value)} {activeCursorPlot?.yUnit ?? displaySignalPlot.yUnit}</code>
                       </div>
                       <label className="preview-density">
                         <span>Preview pts</span>
@@ -3097,6 +3107,7 @@ export const App = () => {
                   xRange={displaySignalPlot.xAxis.linkToMaster ? { min: visibleSelection.start, max: visibleSelection.end } : activePlotView.x}
                   yRange={activePlotView.y}
                   cursorX={activeCursorX}
+                  cursorSeriesId={activeCursorPlot?.id}
                   maxPreviewPoints={plotPreviewPoints}
                   onXRange={(range) => setActivePlotView("x", range)}
                   onYRange={(range) => setActivePlotView("y", range)}
@@ -3188,10 +3199,15 @@ export const App = () => {
             {activeChart === "series" && displaySignalPlot?.kind === "line" ? (
               <div className="group-results-legend compact">
                 {[displaySignalPlot, ...compatibleComparePlots].map((plot, index) => (
-                  <span key={plot.id}>
+                  <button
+                    key={plot.id}
+                    className={activeCursorPlot?.id === plot.id ? "active" : ""}
+                    onClick={() => setPlotCursorSeriesIds((current) => ({ ...current, [plotKey]: plot.id }))}
+                    title={`Use ${plot.title} for cursor values`}
+                  >
                     <i style={{ background: scientificPlotPalette[index % scientificPlotPalette.length] }} />
                     {plot.title}
-                  </span>
+                  </button>
                 ))}
               </div>
             ) : null}
@@ -3206,6 +3222,7 @@ export const App = () => {
                 xRange={displaySignalPlot.xAxis.linkToMaster ? { min: visibleSelection.start, max: visibleSelection.end } : activePlotView.x}
                 yRange={activePlotView.y}
                 cursorX={activeCursorX}
+                cursorSeriesId={activeCursorPlot?.id}
                 maxPreviewPoints={plotPreviewPoints}
                 onXRange={(range) => setActivePlotView("x", range)}
                 onYRange={(range) => setActivePlotView("y", range)}

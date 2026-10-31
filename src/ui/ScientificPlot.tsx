@@ -87,6 +87,7 @@ export const ScientificSeriesPlot = ({
   xRange,
   yRange,
   cursorX,
+  cursorSeriesId,
   maxPreviewPoints = 1200,
   xScale = "linear",
   onXRange,
@@ -98,6 +99,7 @@ export const ScientificSeriesPlot = ({
   xRange?: ValueRange;
   yRange?: ValueRange;
   cursorX?: number;
+  cursorSeriesId?: string;
   maxPreviewPoints?: number;
   xScale?: "linear" | "log";
   onXRange?: (range?: ValueRange) => void;
@@ -105,9 +107,12 @@ export const ScientificSeriesPlot = ({
   onCursorX?: (value: number) => void;
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
+  const allSeries = [model, ...comparisons];
+  const cursorSeriesIndex = Math.max(0, allSeries.findIndex((series) => series.id === cursorSeriesId));
+  const cursorSeries = allSeries[cursorSeriesIndex] ?? model;
   const xBounds = useMemo(() => fullRange(model.x), [model.x]);
   const activeXRange = xRange ?? xBounds;
-  const visibleSeries = [model, ...comparisons].map((series) => {
+  const visibleSeries = allSeries.map((series) => {
     const indexes = series.x
       .map((value, index) => ({ value, index }))
       .filter(({ value }) => value >= activeXRange.min && value <= activeXRange.max)
@@ -147,7 +152,7 @@ export const ScientificSeriesPlot = ({
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect) return;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(rect.width, 1)));
-    const point = nearestPoint(model.x, model.y, unscaleX(ratio));
+    const point = nearestPoint(cursorSeries.x, cursorSeries.y, unscaleX(ratio));
     if (point) setHover({ x: point.x, y: point.y });
   };
   const paths = visibleSeries.map((series) => {
@@ -161,7 +166,7 @@ export const ScientificSeriesPlot = ({
       })
       .join(" ");
   });
-  const activeCursor = hover ?? (cursorX === undefined ? undefined : nearestPoint(model.x, model.y, cursorX));
+  const activeCursor = hover ?? (cursorX === undefined ? undefined : nearestPoint(cursorSeries.x, cursorSeries.y, cursorX));
   const cursorLeft = activeCursor ? scaleX(activeCursor.x) : undefined;
   const cursorTop = activeCursor ? 92 - ((activeCursor.y - activeYRange.min) / ySpan) * 84 : undefined;
 
@@ -191,7 +196,7 @@ export const ScientificSeriesPlot = ({
             updateHover(event.clientX);
             const rect = event.currentTarget.getBoundingClientRect();
             const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)));
-            onCursorX?.(nearestPoint(model.x, model.y, unscaleX(ratio))?.x ?? unscaleX(ratio));
+            onCursorX?.(nearestPoint(cursorSeries.x, cursorSeries.y, unscaleX(ratio))?.x ?? unscaleX(ratio));
           }
           setDrag(undefined);
         }}
@@ -235,11 +240,11 @@ export const ScientificSeriesPlot = ({
           <>
             <span className="crosshair-x" style={{ left: `${cursorLeft}%` }} />
             <span className="crosshair-y" style={{ top: `${Math.min(100, Math.max(0, cursorTop))}%` }} />
-            <span className="crosshair-point" style={{ left: `${cursorLeft}%`, top: `${Math.min(100, Math.max(0, cursorTop))}%`, borderColor: scientificPlotPalette[0] }} />
+            <span className="crosshair-point" style={{ left: `${cursorLeft}%`, top: `${Math.min(100, Math.max(0, cursorTop))}%`, borderColor: scientificPlotPalette[cursorSeriesIndex % scientificPlotPalette.length] }} />
             {hover ? (
               <span className="crosshair-tooltip">
                 {axisText(activeCursor?.x ?? 0, model.xAxis.unit)}
-                <strong>{formatNumber(activeCursor?.y ?? 0)} {model.yUnit}</strong>
+                <strong>{formatNumber(activeCursor?.y ?? 0)} {cursorSeries.yUnit}</strong>
               </span>
             ) : null}
           </>

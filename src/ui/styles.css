@@ -967,41 +967,6 @@ button {
   background: #f0f9ff;
 }
 
-.node-menu {
-  position: absolute;
-  top: 32px;
-  right: 7px;
-  z-index: 80;
-  min-width: 142px;
-  display: grid;
-  gap: 3px;
-  border: 1px solid #cbdce6;
-  border-radius: 8px;
-  padding: 5px;
-  background: #ffffff;
-  box-shadow: 0 18px 34px rgba(25, 48, 70, 0.18);
-}
-
-.node-menu button {
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0 8px;
-  color: #334155;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 720;
-  text-align: left;
-}
-
-.node-menu button:hover {
-  color: #0369a1;
-  background: #f0f9ff;
-}
-
 .canvas-hint.error {
   border-color: #fecaca;
   color: #991b1b;
@@ -1970,7 +1935,8 @@ button {
   font-weight: 760;
 }
 
-.plot-legend span {
+.plot-legend span,
+.plot-legend button {
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -1978,6 +1944,28 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.plot-legend button,
+.group-results-legend button {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.plot-legend button:hover,
+.group-results-legend button:hover {
+  background: #f1f5f9;
+}
+
+.plot-legend button.active,
+.group-results-legend button.active {
+  border-color: #bae6fd;
+  color: #0369a1;
+  background: #f0f9ff;
 }
 
 .plot-legend i {
@@ -2728,7 +2716,8 @@ button {
   font-weight: 720;
 }
 
-.group-results-legend span {
+.group-results-legend span,
+.group-results-legend button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2751,7 +2740,7 @@ button {
 .group-metric-grid {
   height: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 10px;
   overflow: auto;
@@ -2768,9 +2757,16 @@ button {
 
 .group-metric-grid > section > strong {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
   color: #284760;
   font-size: 11px;
+}
+
+.group-metric-grid > section > small {
+  display: block;
+  margin-bottom: 8px;
+  color: #71869a;
+  font-size: 10px;
 }
 
 .group-analysis-view {
